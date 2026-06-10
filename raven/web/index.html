@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>PROJECT RAVEN — Intelligence Fusion & Investigation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Michroma&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div id="banner" class="banner">RESTRICTED — LAWFUL INVESTIGATION USE ONLY</div>
+
+  <!-- LOGIN -->
+  <section id="login" class="login">
+    <canvas id="particles"></canvas>
+    <div class="login-card">
+      <div class="brand"><span class="raven">◤ RAVEN</span></div>
+      <div class="brand-sub">Advanced Intelligence Fusion &amp; Investigation Platform</div>
+      <form id="login-form">
+        <label>Operator ID<input name="username" autocomplete="username" required /></label>
+        <label>Passphrase<input name="password" type="password" autocomplete="current-password" required /></label>
+        <button class="btn primary" type="submit">AUTHENTICATE</button>
+        <div id="login-error" class="error"></div>
+      </form>
+      <div class="login-foot">Air-gap capable · No third-party AI · No paid APIs required</div>
+    </div>
+  </section>
+
+  <!-- APP -->
+  <section id="app" class="app hidden">
+    <header class="topbar">
+      <div class="brand-mini">◤ RAVEN</div>
+      <div class="topbar-right">
+        <span id="who" class="who"></span>
+        <button id="audit-btn" class="btn ghost small hidden">AUDIT</button>
+        <button id="logout" class="btn ghost small">SIGN OUT</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <!-- CONSOLE -->
+      <aside class="console">
+        <h2 class="panel-title">COLLECTION CONSOLE</h2>
+        <form id="scan-form">
+          <div class="field-group required">
+            <label>Case ID<input name="case_id" placeholder="OP-2231" required /></label>
+            <label>Legal basis<input name="legal_basis" placeholder="Warrant #W-88123 / FIR no." required /></label>
+            <div class="hint">Both are mandatory and written to the audit log.</div>
+          </div>
+          <div class="divider"></div>
+          <label class="ico ico-phone">Phone<input name="phone" placeholder="+91 98992 94332" /></label>
+          <label class="ico ico-mail">Email<input name="email" placeholder="subject@example.com" /></label>
+          <label class="ico ico-user">Username / handle<input name="username" placeholder="handle" /></label>
+          <label class="ico ico-globe">Domain<input name="domain" placeholder="example.com" /></label>
+          <label class="region">Default phone region<input name="region" value="IN" maxlength="2" /></label>
+          <button class="btn primary block" type="submit">▷ RUN COLLECTION</button>
+          <div id="scan-error" class="error"></div>
+          <div id="quota" class="quota"></div>
+        </form>
+      </aside>
+
+      <!-- RESULTS -->
+      <div class="results">
+        <div id="empty" class="empty">
+          <div class="radar"></div>
+          <p>Enter one or more identifiers and run a collection.<br/>Results, provenance and link analysis appear here.</p>
+        </div>
+
+        <div id="output" class="hidden">
+          <div id="summary" class="summary"></div>
+          <div class="results-grid">
+            <div id="cards" class="cards"></div>
+            <div class="graph-panel">
+              <h3 class="panel-title">LINK ANALYSIS</h3>
+              <canvas id="graph"></canvas>
+              <div id="graph-legend" class="legend"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- AUDIT MODAL -->
+    <div id="audit-modal" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-head"><h3>AUDIT LOG <span id="chain-state"></span></h3><button id="audit-close" class="btn ghost small">CLOSE</button></div>
+        <div id="audit-body" class="audit-body"></div>
+      </div>
+    </div>
+
+    <footer class="statusbar">
+      <span id="mode">◉ ONLINE</span>
+      <span id="clock"></span>
+      <span>PROJECT RAVEN · v1.0</span>
+    </footer>
+  </section>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -3,9 +3,32 @@
 A working, native implementation of Project Raven's open-internet collection — **no
 third-party AI, no paid APIs, no API keys**. It uses only offline parsing and public
 internet endpoints, and it reports **only what it actually retrieves** (no fabricated
-values). Intended for lawful use, including checking your *own* public exposure.
+values). For lawful investigation use.
 
-## Install & run
+## Run as a web app (any browser or phone)
+
+```bash
+pip install -r raven/requirements.txt
+uvicorn raven.server:app --host 0.0.0.0 --port 8000
+# open http://<host>:8000  — log in, then run collections
+```
+
+On first boot a default admin is seeded (username `admin`, password `raven-admin`
+unless `RAVEN_ADMIN_PASSWORD` is set). **Change it after first login.**
+
+- **Roles / tiers:** `admin` = free, unlimited (your agency); `investigator` = the
+  paid tier ($2.99/user) with a 50 scans/day quota.
+- **Governance:** every scan requires a **case ID** and a **legal basis**, and is
+  written to a hash-chained, tamper-evident audit log (admins can view it in-app).
+- Runtime state lives in `raven/data/` (gitignored — contains secrets/users/audit).
+
+Add an investigator account:
+
+```python
+python -c "from raven import auth; auth.create_user('analyst1','strong-pass','investigator','Analyst One')"
+```
+
+## Run as a CLI
 
 ```bash
 pip install -r raven/requirements.txt

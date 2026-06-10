@@ -1,0 +1,8 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Raven runtime data (secrets, users, audit, quota) — never commit
+raven/data/
