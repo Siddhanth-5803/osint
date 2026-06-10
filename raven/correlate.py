@@ -1,61 +1,75 @@
-"""Lightweight correlation — turn a set of scanned Targets into a link graph.
+"""Decompose a collector Target into graph-ready parts.
 
-Produces {nodes, edges} suitable for the UI. Nodes are the scanned identifiers plus
-entities derived from findings (services, subdomains, breaches). Edges record why two
-things are linked, each with a confidence. This is the runnable seed of the full Neo4j
-link-analysis design in docs/06.
+Given one Target, classify its findings into:
+  * attributes — scalar facts stored on the root entity (shown in its detail card)
+  * derived    — terminal graph nodes created from findings (services, profiles,
+                 breaches, subdomains, IPs, organizations) with an edge from the root
+  * pivots     — NEW identifiers that should be fed back into collectors to grow the
+                 case graph (the auto-pivot engine consumes these)
+
+This keeps the link-graph logic in one place, used by both persistence (store/ingest)
+and the auto-pivot engine.
 """
 from __future__ import annotations
 
 from .model import Target
 
+# finding-key prefixes/keys that become their own graph node (not a root attribute)
+_DERIVED_KEYS = {"subdomains", "dns_A", "dns_AAAA", "registrant_org"}
 
-def build_graph(targets: list[Target]) -> dict:
-    nodes: dict[str, dict] = {}
-    edges: list[dict] = []
 
-    def node(nid: str, kind: str, label: str | None = None):
-        if nid not in nodes:
-            nodes[nid] = {"id": nid, "kind": kind, "label": label or nid}
-        return nid
+def decompose(target: Target) -> dict:
+    root = {"kind": target.kind, "value": target.value, "label": target.value,
+            "confidence": max((f.confidence for f in target.findings), default=50)}
+    attributes: list[dict] = []
+    derived: list[dict] = []
+    pivots: list[dict] = []
 
-    def edge(a: str, b: str, rel: str, conf: int, note: str = ""):
-        edges.append({"source": a, "target": b, "rel": rel, "confidence": conf, "note": note})
+    for f in target.findings:
+        key = f.key
+        if key.startswith("account:"):
+            svc = key.split(":", 1)[1]
+            derived.append({"kind": "service", "value": svc, "label": svc,
+                            "rel": "REGISTERED_ON", "confidence": f.confidence, "note": f.note})
+        elif key.startswith("profile:"):
+            site = key.split(":", 1)[1]
+            derived.append({"kind": "profile", "value": str(f.value), "label": site,
+                            "rel": "HAS_PROFILE", "confidence": f.confidence, "note": f.note})
+        elif key.startswith("breach:"):
+            name = key.split(":", 1)[1]
+            derived.append({"kind": "breach", "value": name, "label": name,
+                            "rel": "EXPOSED_IN", "confidence": f.confidence, "note": f.note})
+        elif key == "subdomains":
+            for sub in (f.value if isinstance(f.value, list) else [])[:40]:
+                derived.append({"kind": "host", "value": sub, "label": sub,
+                                "rel": "HAS_SUBDOMAIN", "confidence": f.confidence, "note": ""})
+        elif key in ("dns_A", "dns_AAAA"):
+            for ip in (f.value if isinstance(f.value, list) else []):
+                derived.append({"kind": "ip", "value": ip, "label": ip,
+                                "rel": "RESOLVES_TO", "confidence": f.confidence, "note": ""})
+        elif key == "registrant_org":
+            derived.append({"kind": "organization", "value": str(f.value), "label": str(f.value),
+                            "rel": "REGISTERED_BY", "confidence": f.confidence, "note": f.note})
+        else:
+            attributes.append({"key": key, "value": f.value, "source": f.source,
+                               "confidence": f.confidence, "note": f.note})
 
-    derived_usernames: dict[str, str] = {}  # candidate -> origin node
-
-    for t in targets:
-        root = node(t.value, t.kind)
-        for f in t.findings:
-            if f.key.startswith("account:"):
-                svc = f.key.split(":", 1)[1]
-                node(f"svc:{svc}", "service", svc)
-                edge(root, f"svc:{svc}", "registered_on", f.confidence,
-                     "email in use on this service")
-            elif f.key.startswith("profile:"):
-                site = f.key.split(":", 1)[1]
-                node(str(f.value), "profile", site)
-                edge(root, str(f.value), "has_profile", f.confidence, f.note)
-            elif f.key.startswith("breach:"):
-                b = f.key.split(":", 1)[1]
-                node(f"breach:{b}", "breach", b)
-                edge(root, f"breach:{b}", "exposed_in", f.confidence, f.note)
-            elif f.key == "username_candidates":
+    # ---- pivots: new identifiers to re-collect ----
+    if target.kind == "email" and "@" in target.value:
+        dom = target.value.rsplit("@", 1)[1].lower()
+        pivots.append({"kind": "domain", "value": dom, "rel": "USES_DOMAIN",
+                       "confidence": 70, "note": "email domain"})
+        for f in target.findings:
+            if f.key == "username_candidates":
                 for cand in (f.value if isinstance(f.value, list) else [f.value]):
-                    derived_usernames[cand] = root
-            elif f.key == "subdomains":
-                for sub in (f.value if isinstance(f.value, list) else [])[:50]:
-                    node(f"host:{sub}", "host", sub)
-                    edge(root, f"host:{sub}", "has_subdomain", f.confidence)
-            elif f.key in ("registrant_org", "carrier", "region"):
-                node(f"{f.key}:{f.value}", f.key, str(f.value))
-                edge(root, f"{f.key}:{f.value}", f.key, f.confidence)
+                    pivots.append({"kind": "username", "value": str(cand),
+                                   "rel": "POSSIBLE_HANDLE", "confidence": 40,
+                                   "note": "derived from email local-part"})
+    if target.kind == "domain":
+        for f in target.findings:
+            if f.key == "emails":
+                for addr in (f.value if isinstance(f.value, list) else [f.value]):
+                    pivots.append({"kind": "email", "value": str(addr), "rel": "REGISTERED_BY",
+                                   "confidence": 60, "note": "WHOIS/RDAP registrant email"})
 
-    # cross-target: a scanned username matching a derived candidate is a strong link
-    scanned = {t.value.lstrip("@"): t.value for t in targets if t.kind == "username"}
-    for cand, origin in derived_usernames.items():
-        if cand in scanned:
-            edge(origin, scanned[cand], "likely_same_handle", 60,
-                 "email local-part matches scanned username")
-
-    return {"nodes": list(nodes.values()), "edges": edges}
+    return {"root": root, "attributes": attributes, "derived": derived, "pivots": pivots}

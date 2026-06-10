@@ -18,9 +18,31 @@ unless `RAVEN_ADMIN_PASSWORD` is set). **Change it after first login.**
 
 - **Roles / tiers:** `admin` = free, unlimited (your agency); `investigator` = the
   paid tier ($2.99/user) with a 50 scans/day quota.
-- **Governance:** every scan requires a **case ID** and a **legal basis**, and is
-  written to a hash-chained, tamper-evident audit log (admins can view it in-app).
-- Runtime state lives in `raven/data/` (gitignored — contains secrets/users/audit).
+- **Cases:** create a case (with a mandatory **legal basis**) first, then run
+  collections into it. Cases persist (SQLite) and accumulate their link graph over
+  time — reopen a case and keep building.
+- **Auto-pivot:** a collection automatically follows discovered identifiers
+  (email → domain, email → username, domain → registrant email) up to a depth limit
+  (1 hop for investigators, 2 for admins), bounded by a per-scan collection cap so it
+  never runs away. Every entity/relationship is persisted and attributable to a scan.
+- **Phone enrichment:** offline metadata + search-format variants, plus messaging
+  presence (WhatsApp/Telegram) and spam reputation as **Bring-Your-Own providers** —
+  off by default, reported honestly as "not configured" with manual-verification
+  leads (`wa.me`/`t.me`) rather than fabricated results. Configure via env (see below).
+- **Governance:** every collection is written to a hash-chained, tamper-evident audit
+  log (admins can view it in-app; the chain self-verifies).
+- Runtime state lives in `raven/data/` (gitignored — secrets/users/audit/SQLite DB).
+
+### Optional phone-enrichment providers (BYO)
+
+```bash
+export RAVEN_PHONE_PROVIDER_URL=https://your-vendor/lookup     # general (carrier/HLR)
+export RAVEN_PHONE_PROVIDER_HEADER='{"X-API-Key":"..."}'        # optional headers
+export RAVEN_WHATSAPP_PROVIDER_URL=https://your-wa-checker      # messaging presence
+export RAVEN_TELEGRAM_PROVIDER_URL=https://your-tg-checker
+export RAVEN_SPAM_PROVIDER_URL=https://your-spam-reputation
+# contract: GET <url>?number=<E164> -> JSON object; scalar fields become findings
+```
 
 Add an investigator account:
 

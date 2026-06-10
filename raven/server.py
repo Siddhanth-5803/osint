@@ -1,12 +1,13 @@
 """Project Raven — web application server.
 
-FastAPI backend that exposes the OSINT collectors over a JSON API and serves the
-Obsidian Orange web UI. Accessible from any browser or phone — no app install.
+FastAPI backend that exposes case management + auto-pivot OSINT collection over a
+JSON API and serves the Obsidian Orange web UI. Accessible from any browser or phone.
 
 Lawful-investigation governance is enforced here:
   * login required (roles: admin = free/unlimited, investigator = paid tier w/ quota)
-  * every scan requires a case ID and a stated legal basis
-  * every scan is written to the hash-chained audit log
+  * a case (with a stated legal basis) must exist before any collection
+  * every collection is auto-pivoted, persisted to the case, and written to the
+    hash-chained audit log
 
 Run:  uvicorn raven.server:app --host 0.0.0.0 --port 8000
 """
@@ -19,17 +20,18 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import auth, audit
-from .correlate import build_graph
-from .collectors import phone as phone_c
-from .collectors import email as email_c
-from .collectors import username as username_c
-from .collectors import domain as domain_c
-from .collectors import breach as breach_c
-from .collectors import email_accounts as accounts_c
+from . import auth, audit, store, pivot
 
-app = FastAPI(title="Project Raven", version="1.0")
+app = FastAPI(title="Project Raven", version="1.1")
 WEB = Path(__file__).parent / "web"
+
+ROLE_LIMITS = {"admin": {"max_depth": 2, "max_collections": 25},
+               "investigator": {"max_depth": 1, "max_collections": 12}}
+
+
+@app.on_event("startup")
+def _startup():
+    store.init()
 
 
 # ----------------------------- models -----------------------------
@@ -38,17 +40,24 @@ class LoginIn(BaseModel):
     password: str
 
 
+class CaseIn(BaseModel):
+    code: str
+    title: str
+    legal_basis: str
+    priority: str = "medium"
+
+
 class ScanIn(BaseModel):
     case_id: str
-    legal_basis: str
     phone: str | None = None
     email: str | None = None
     username: str | None = None
     domain: str | None = None
     region: str = "IN"
+    max_depth: int | None = None     # None -> role default
 
 
-# ----------------------------- auth dep -----------------------------
+# ----------------------------- auth helper -----------------------------
 def current_user(authorization: str | None) -> dict:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "authentication required")
@@ -58,7 +67,11 @@ def current_user(authorization: str | None) -> dict:
     return user
 
 
-# ----------------------------- API -----------------------------
+def _ip(request: Request) -> str | None:
+    return request.client.host if request.client else None
+
+
+# ----------------------------- auth API -----------------------------
 @app.get("/api/health")
 def health():
     return {"status": "ok", "audit_chain_intact": audit.verify_chain()}
@@ -78,12 +91,47 @@ def me(authorization: str | None = Header(default=None)):
     return current_user(authorization)
 
 
-# sync def -> FastAPI runs it in a threadpool, so collectors' internal asyncio.run works
+# ----------------------------- cases -----------------------------
+@app.get("/api/cases")
+def list_cases(authorization: str | None = Header(default=None)):
+    current_user(authorization)
+    return {"cases": store.list_cases()}
+
+
+@app.post("/api/cases")
+def create_case(body: CaseIn, request: Request, authorization: str | None = Header(default=None)):
+    user = current_user(authorization)
+    if not body.code.strip() or not body.title.strip() or not body.legal_basis.strip():
+        raise HTTPException(400, "code, title and legal_basis are required")
+    try:
+        case = store.create_case(body.code.strip(), body.title.strip(),
+                                 body.legal_basis.strip(), user["username"], body.priority)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    audit.record(actor=user["username"], action="case.create", case_id=case["code"],
+                 legal_basis=case["legal_basis"], inputs={"title": case["title"]},
+                 summary={}, ip=_ip(request))
+    return case
+
+
+@app.get("/api/cases/{case_id}")
+def get_case(case_id: str, authorization: str | None = Header(default=None)):
+    current_user(authorization)
+    case = store.get_case(case_id)
+    if not case:
+        raise HTTPException(404, "case not found")
+    return {"case": case, "graph": store.case_graph(case["id"]),
+            "entities": store.case_entities(case["id"])}
+
+
+# ----------------------------- scan (auto-pivot) -----------------------------
+# sync def -> FastAPI threadpool, so collectors' internal asyncio.run works
 @app.post("/api/scan")
 def scan(body: ScanIn, request: Request, authorization: str | None = Header(default=None)):
     user = current_user(authorization)
-    if not body.case_id.strip() or not body.legal_basis.strip():
-        raise HTTPException(400, "case_id and legal_basis are required for any collection")
+    case = store.get_case(body.case_id)
+    if not case:
+        raise HTTPException(404, "case not found — create the case first")
 
     requested = [k for k in ("phone", "email", "username", "domain") if getattr(body, k)]
     if not requested:
@@ -94,31 +142,22 @@ def scan(body: ScanIn, request: Request, authorization: str | None = Header(defa
     if not allowed:
         raise HTTPException(429, "daily quota exhausted for your tier")
 
-    targets = []
-    if body.phone:
-        targets.append(phone_c.collect(body.phone, default_region=body.region))
-    if body.email:
-        t = email_c.collect(body.email)
-        for extra in (accounts_c.collect(body.email), breach_c.collect(body.email)):
-            t.findings.extend(extra.findings)
-            t.errors.extend(extra.errors)
-        targets.append(t)
-    if body.username:
-        targets.append(username_c.collect(body.username))
-    if body.domain:
-        targets.append(domain_c.collect(body.domain))
+    limits = ROLE_LIMITS.get(user["role"], ROLE_LIMITS["investigator"])
+    depth = body.max_depth if body.max_depth is not None else limits["max_depth"]
+    depth = max(0, min(depth, limits["max_depth"]))
 
-    graph = build_graph(targets)
-    summary = {"identifiers": requested,
-               "findings": sum(len(t.findings) for t in targets),
-               "links": len(graph["edges"])}
-    audit.record(actor=user["username"], action="scan", case_id=body.case_id,
-                 legal_basis=body.legal_basis,
-                 inputs={k: getattr(body, k) for k in requested},
-                 summary=summary, ip=request.client.host if request.client else None)
+    inputs = {k: getattr(body, k).strip() for k in requested}
+    result = pivot.run_collection(case["id"], user["username"], inputs,
+                                  region=body.region, max_depth=depth,
+                                  max_collections=limits["max_collections"])
 
-    return {"targets": [t.to_dict() for t in targets], "graph": graph,
-            "summary": summary, "quota_remaining": remaining}
+    audit.record(actor=user["username"], action="scan", case_id=case["code"],
+                 legal_basis=case["legal_basis"], inputs=inputs,
+                 summary=result["summary"], ip=_ip(request))
+
+    return {"summary": result["summary"], "quota_remaining": remaining,
+            "graph": store.case_graph(case["id"]),
+            "entities": store.case_entities(case["id"])}
 
 
 @app.get("/api/audit")

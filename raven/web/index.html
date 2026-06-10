@@ -30,7 +30,10 @@
   <!-- APP -->
   <section id="app" class="app hidden">
     <header class="topbar">
-      <div class="brand-mini">◤ RAVEN</div>
+      <div class="brand-row">
+        <div class="brand-mini">◤ RAVEN</div>
+        <button id="back-cases" class="btn ghost small hidden">◄ CASES</button>
+      </div>
       <div class="topbar-right">
         <span id="who" class="who"></span>
         <button id="audit-btn" class="btn ghost small hidden">AUDIT</button>
@@ -38,44 +41,60 @@
       </div>
     </header>
 
-    <main class="layout">
-      <!-- CONSOLE -->
+    <!-- CASES VIEW -->
+    <main id="cases-view" class="cases-view">
+      <div class="cases-head">
+        <h2 class="panel-title">INVESTIGATION CASES</h2>
+        <button id="new-case-btn" class="btn primary small">+ NEW CASE</button>
+      </div>
+      <form id="case-form" class="case-form hidden">
+        <div class="case-form-grid">
+          <label>Case code<input name="code" placeholder="OP-2231" required /></label>
+          <label>Title<input name="title" placeholder="Operation Greyfalcon" required /></label>
+          <label>Priority
+            <select name="priority"><option>low</option><option selected>medium</option><option>high</option><option>critical</option></select>
+          </label>
+          <label class="wide">Legal basis<input name="legal_basis" placeholder="Warrant #W-88123 / FIR no. — mandatory" required /></label>
+        </div>
+        <div class="case-form-actions">
+          <button class="btn primary small" type="submit">CREATE CASE</button>
+          <button id="case-cancel" class="btn ghost small" type="button">Cancel</button>
+          <span id="case-error" class="error"></span>
+        </div>
+      </form>
+      <div id="cases-list" class="cases-list"></div>
+    </main>
+
+    <!-- CASE WORKSPACE -->
+    <main id="case-view" class="layout hidden">
       <aside class="console">
+        <div id="case-header" class="case-header"></div>
         <h2 class="panel-title">COLLECTION CONSOLE</h2>
         <form id="scan-form">
-          <div class="field-group required">
-            <label>Case ID<input name="case_id" placeholder="OP-2231" required /></label>
-            <label>Legal basis<input name="legal_basis" placeholder="Warrant #W-88123 / FIR no." required /></label>
-            <div class="hint">Both are mandatory and written to the audit log.</div>
-          </div>
-          <div class="divider"></div>
           <label class="ico ico-phone">Phone<input name="phone" placeholder="+91 98992 94332" /></label>
           <label class="ico ico-mail">Email<input name="email" placeholder="subject@example.com" /></label>
           <label class="ico ico-user">Username / handle<input name="username" placeholder="handle" /></label>
           <label class="ico ico-globe">Domain<input name="domain" placeholder="example.com" /></label>
-          <label class="region">Default phone region<input name="region" value="IN" maxlength="2" /></label>
+          <div class="row2">
+            <label>Region<input name="region" value="IN" maxlength="2" /></label>
+            <label>Auto-pivot depth
+              <select name="max_depth"><option value="0">0 — none</option><option value="1" selected>1 hop</option><option value="2">2 hops</option></select>
+            </label>
+          </div>
           <button class="btn primary block" type="submit">▷ RUN COLLECTION</button>
           <div id="scan-error" class="error"></div>
           <div id="quota" class="quota"></div>
         </form>
       </aside>
 
-      <!-- RESULTS -->
       <div class="results">
-        <div id="empty" class="empty">
-          <div class="radar"></div>
-          <p>Enter one or more identifiers and run a collection.<br/>Results, provenance and link analysis appear here.</p>
-        </div>
-
-        <div id="output" class="hidden">
-          <div id="summary" class="summary"></div>
-          <div class="results-grid">
-            <div id="cards" class="cards"></div>
-            <div class="graph-panel">
-              <h3 class="panel-title">LINK ANALYSIS</h3>
-              <canvas id="graph"></canvas>
-              <div id="graph-legend" class="legend"></div>
-            </div>
+        <div id="summary" class="summary"></div>
+        <div class="results-grid">
+          <div id="cards" class="cards"></div>
+          <div class="graph-panel">
+            <h3 class="panel-title">LINK ANALYSIS <span id="graph-count" class="muted"></span></h3>
+            <canvas id="graph"></canvas>
+            <div id="graph-legend" class="legend"></div>
           </div>
         </div>
       </div>
@@ -92,7 +111,7 @@
     <footer class="statusbar">
       <span id="mode">◉ ONLINE</span>
       <span id="clock"></span>
-      <span>PROJECT RAVEN · v1.0</span>
+      <span>PROJECT RAVEN · v1.1</span>
     </footer>
   </section>
 
