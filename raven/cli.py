@@ -20,6 +20,9 @@ import sys
 from .collectors import phone as phone_c
 from .collectors import email as email_c
 from .collectors import username as username_c
+from .collectors import domain as domain_c
+from .collectors import breach as breach_c
+from .collectors import email_accounts as accounts_c
 from .model import Target
 
 ORANGE = "\033[38;5;208m"
@@ -46,7 +49,22 @@ def run_one(kind: str, value: str, region: str = "IN") -> Target:
         return email_c.collect(value)
     if kind == "username":
         return username_c.collect(value)
+    if kind == "domain":
+        return domain_c.collect(value)
+    if kind == "accounts":
+        return accounts_c.collect(value)
+    if kind == "breach":
+        return breach_c.collect(value)
     raise ValueError(f"unknown kind {kind}")
+
+
+def merge_targets(*targets: Target) -> Target:
+    """Combine several Targets describing the same value into one report."""
+    base = targets[0]
+    for extra in targets[1:]:
+        base.findings.extend(extra.findings)
+        base.errors.extend(extra.errors)
+    return base
 
 
 def print_target(t: Target) -> None:
@@ -75,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--region", default="IN", help="default phone region (ISO-3166), default IN")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    for k in ("phone", "email", "username", "auto"):
+    for k in ("phone", "email", "username", "domain", "accounts", "breach", "auto"):
         sp = sub.add_parser(k)
         sp.add_argument("value")
 
@@ -83,22 +101,34 @@ def main(argv: list[str] | None = None) -> int:
     sc.add_argument("--phone")
     sc.add_argument("--email")
     sc.add_argument("--username")
+    sc.add_argument("--domain")
 
     args = p.parse_args(argv)
     targets: list[Target] = []
+
+    def email_deep(addr: str) -> Target:
+        # full email picture: validation + account-existence + breach exposure
+        return merge_targets(email_c.collect(addr),
+                             accounts_c.collect(addr),
+                             breach_c.collect(addr))
 
     if args.cmd == "scan":
         if args.phone:
             targets.append(run_one("phone", args.phone, args.region))
         if args.email:
-            targets.append(run_one("email", args.email))
+            targets.append(email_deep(args.email))
         if args.username:
             targets.append(run_one("username", args.username))
+        if args.domain:
+            targets.append(run_one("domain", args.domain))
         if not targets:
-            p.error("scan needs at least one of --phone/--email/--username")
+            p.error("scan needs at least one of --phone/--email/--username/--domain")
     else:
         kind = guess_kind(args.value) if args.cmd == "auto" else args.cmd
-        targets.append(run_one(kind, args.value, args.region))
+        if kind == "email":
+            targets.append(email_deep(args.value))
+        else:
+            targets.append(run_one(kind, args.value, args.region))
 
     if args.json:
         print(json.dumps([t.to_dict() for t in targets], indent=2, default=str))
