@@ -6,6 +6,35 @@
 
 ---
 
+## ✅ Working prototype (this repo)
+
+This is no longer just a document — a functional prototype now lives in
+[`web/`](web/), shipping as **both a website and an Android app**:
+
+- **Website** — Vite + React + TypeScript + Tailwind + Framer Motion. Premium
+  dark UI, fluid motion, and a full wizard: landing → upload → vibe (theme /
+  mood / track / format / prompt) → animated "generating" → choose from 3
+  variants → export.
+- **Real reel engine** — a deterministic, **beat-synced** canvas renderer
+  (`web/src/lib/reel.ts`) with Ken Burns motion, multiple transition styles,
+  per-theme color grades, animated titles, and live preview. Cut timing comes
+  from track BPM × mood energy.
+- **Real export** — records the canvas to a downloadable MP4/WebM via
+  `MediaRecorder`, with auto-generated caption + hashtags.
+- **Android app** — the same build wrapped with **Capacitor** (`com.reelio.app`),
+  producing an installable APK. A GitHub Actions workflow
+  (`.github/workflows/android.yml`) builds the APK as a downloadable artifact.
+- **Licensing-safe music** — tracks are **metadata-only** (tempo/mood) and never
+  embed third-party audio, exactly as recommended in §7.
+
+Run it: `cd web && npm install && npm run dev`. Build the APK:
+`npm run android:apk`. See [`web/README.md`](web/README.md) for details.
+
+The sections below remain the full product vision the prototype is a first
+slice of.
+
+---
+
 ## Table of Contents
 
 1. [Product Name Ideas](#1-product-name-ideas)
