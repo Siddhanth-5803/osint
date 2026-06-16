@@ -1,0 +1,16 @@
+{
+  "name": "Reelio — AI Reel Studio",
+  "short_name": "Reelio",
+  "description": "Turn your photos and videos into beat-synced reels. Pick a vibe, get finished videos in seconds.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0b11",
+  "theme_color": "#0b0b11",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

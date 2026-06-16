@@ -31,6 +31,12 @@ export default function ReelPlayer({
   const [pulse, setPulse] = useState(0);
   const [loaded, setLoaded] = useState(false);
 
+  // Keep playback in sync when the parent toggles autoplay (e.g. selecting a
+  // different variant in the results grid).
+  useEffect(() => {
+    setPlaying(autoplay);
+  }, [autoplay]);
+
   // load images when the list changes
   useEffect(() => {
     let cancelled = false;
