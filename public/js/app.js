@@ -59,7 +59,7 @@ function priceLabel() {
   const promo = store.get("promo", "");
   if (promo) return `<span class="free">PROMO ACTIVE</span> Unlimited raids for you.`;
   if (c.accessMode === "free") return `<s>₹${c.priceInr} per raid</s> <span class="free">FREE RIGHT NOW</span>`;
-  if (c.accessMode === "promo_only") return `₹${c.priceInr} per raid · invite-only for now`;
+  if (c.accessMode === "promo_only") return `<span class="free">INVITE-ONLY</span> Free stats for everyone. Tap 🎟️ Promo code to unlock the investigation.`;
   return `₹${c.priceInr} per raid`;
 }
 
@@ -142,7 +142,7 @@ function renderInterrogateCard(errorMsg = "") {
   else if (!c.aiReady) priceNote = c.offline ? "The server isn't reachable, so only the free stats work right now." : "The AI isn't connected on this server yet (no API key). The free stats below still work.";
   else if (promo) priceNote = "🎟️ Promo code active. This one's on the house.";
   else if (c.accessMode === "free") priceNote = `Normally ₹${c.priceInr}. Free right now · ${c.freeUsesLeft ?? "a few"} free raids left today.`;
-  else if (c.accessMode === "promo_only") priceNote = "Invite-only for now. You'll need a promo code.";
+  else if (c.accessMode === "promo_only") priceNote = "Invite-only. Tap Start and enter the promo code your friend gave you.";
   else priceNote = `₹${c.priceInr} per raid. Promo codes work too.`;
   const disabled = !state.isSample && !c.aiReady;
 

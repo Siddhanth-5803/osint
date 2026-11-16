@@ -1,4 +1,5 @@
-# One-click hosting on Render (free plan). See README "Put it online".
+# One-click hosting on Render (free plan). See README "Share it with friends".
+# Render asks for the values marked sync: false when you click the Deploy button.
 services:
   - type: web
     name: fbi-open-up
@@ -13,7 +14,7 @@ services:
       - key: CLAUDE_MODEL
         value: claude-opus-5-5
       - key: ACCESS_MODE
-        value: free
+        value: promo_only
       - key: PRICE_INR
         value: "5"
       - key: FREE_DAILY_LIMIT

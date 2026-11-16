@@ -9,7 +9,27 @@ A funny, forensic roast of your group chats. Drop a WhatsApp, Telegram or Instag
 
 ---
 
-## The easiest way: one click
+## Share it with friends, no sign-in needed (recommended)
+
+Host it once with your own Anthropic API key. Your friends then just open a link and enter your promo code. They don't need a Claude account, and you never share your login. Everything is clicks, with no terminal.
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/siddhanth-5803/osint/tree/claude/clever-mccarthy-am2dco)
+
+1. **Get an API key.** Go to https://console.anthropic.com, sign up, add a little credit under **Billing**, and set a monthly **spend limit** so a viral link can't surprise you. Then open **API Keys → Create key** and copy it.
+2. **Click the Deploy to Render button above.** Sign in to Render with GitHub and allow access to this repo.
+3. **Fill in the boxes Render shows you.** Paste the key into `ANTHROPIC_API_KEY`. Optionally put a code for your friends in `PROMO_CODES`, like `GOA2026`. Leave the Razorpay boxes empty. Click **Apply**.
+4. **Wait two or three minutes.** Render gives you a link like `https://fbi-open-up.onrender.com`. Send your friends that link and the promo code.
+
+How it behaves:
+
+- **It's invite-only by default.** Anyone with the link gets the free stats and the sample raid. Only people with a promo code can run the investigation, which is what costs you money. Your own built-in code always works, and phones remember the code after the first time.
+- **Want it open to everyone with the link?** In Render, go to **Environment**, change `ACCESS_MODE` to `free`, and save. Each person then gets `FREE_DAILY_LIMIT` investigations per day.
+- **It costs about ₹25 per investigation** on the default model. Change `CLAUDE_MODEL` to `claude-haiku-5-5` for under ₹1 each (see the cost table below).
+- **Render's free plan sleeps after 15 minutes idle.** The first visit after that takes about a minute to wake up.
+
+---
+
+## Just for you: the claude.ai link
 
 Open the published page on claude.ai: **https://claude.ai/artifact/9sUSdUot7GxE3KUkAm3UNr**
 
