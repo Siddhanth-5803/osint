@@ -120,14 +120,16 @@
 
 <!-- ================= REPORT ================= -->
 <div id="report" hidden>
-  <div class="case-bar">
+  <div class="case-bar" id="case-bar">
     <div class="wrap">
       <button class="btn small" type="button" id="new-raid">← New raid</button>
       <div class="t"><b id="case-title">Case file</b><small id="case-meta"></small></div>
       <button class="btn small blue" type="button" id="share-btn" hidden>📸 Share</button>
     </div>
     <div class="wrap"><nav class="jump" id="jump" aria-label="Report sections"></nav></div>
+    <button class="case-hide" type="button" id="case-collapse" aria-label="Hide the case bar"><span class="grab" aria-hidden="true"></span>▴ hide</button>
   </div>
+  <button class="case-pill" type="button" id="case-pill" aria-label="Show the case bar" aria-expanded="true">▾ <span id="case-pill-title">Case</span></button>
   <main class="wrap">
     <section class="section" id="interrogate-wrap"></section>
     <div id="ai-sections"></div>

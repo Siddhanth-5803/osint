@@ -3,6 +3,7 @@ import { computeStats, statsForAi, buildTranscript, makeNameMap, restoreDeep } f
 import { renderCase, renderStats, roastText, esc } from "./report.js";
 import { makeShareCard, shareOrDownload } from "./share.js";
 import { SAMPLE_CHAT_TEXT, SAMPLE_CASE, SAMPLE_TITLE } from "./sample.js";
+import { initCaseBar } from "./casebar.js";
 
 const $ = (s) => document.querySelector(s);
 const store = {
@@ -124,11 +125,13 @@ function openReport(chat, stats, isSample) {
   $("#report").hidden = false;
   $("#share-btn").hidden = true;
   $("#case-title").textContent = `Case: ${chat.title}`;
+  caseBar.setTitle(`Case: ${chat.title}`);
   $("#case-meta").textContent = `${stats.totalMessages.toLocaleString()} messages · ${stats.people.length} suspects · ${chat.source}`;
   $("#ai-sections").innerHTML = "";
   renderInterrogateCard();
   $("#stats-sections").innerHTML = renderStats(stats);
   buildJump();
+  caseBar.reset();
   window.scrollTo({ top: 0 });
 }
 
@@ -236,6 +239,7 @@ function showCase(cf) {
   $("#stats-sections").innerHTML = renderStats(state.stats, cf);
   $("#share-btn").hidden = false;
   buildJump();
+  caseBar.reset();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -367,5 +371,6 @@ async function doShare() {
 }
 
 buildPersonas();
+const caseBar = initCaseBar();
 bind();
 loadConfig();

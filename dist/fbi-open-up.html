@@ -101,7 +101,7 @@ a { color: var(--blue); font-weight: 600; }
 
 /* cards / sections */
 .card { background: var(--cloud); border: var(--line); border-radius: var(--r); box-shadow: var(--shadow); padding: clamp(16px, 3vw, 28px); }
-.section { padding-block: 28px; scroll-margin-top: 120px; }
+.section { padding-block: 28px; scroll-margin-top: 56px; }
 .section-head { display: grid; gap: 6px; margin-bottom: 18px; }
 .section-head h2 { font-size: clamp(1.8rem, 4.5vw, 2.6rem); font-weight: 800; }
 .section-head p { max-width: 62ch; }
@@ -165,11 +165,18 @@ details ol { margin: 0 0 14px; padding-left: 20px; display: grid; gap: 4px; }
 footer { padding-block: 30px 50px; font-size: .9rem; color: var(--navy-soft); text-align: center; }
 
 /* ========== REPORT ========== */
-.case-bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--tape); border-bottom: var(--line); }
+.case-bar { position: fixed; top: env(safe-area-inset-top, 0px); left: 0; right: 0; z-index: 20; background: var(--tape); border-bottom: var(--line); box-shadow: 0 4px 0 rgba(16,26,58,.12); transition: transform .28s ease; }
+.case-bar.collapsed { transform: translateY(calc(-100% - env(safe-area-inset-top, 0px) - 12px)); }
+.case-hide { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; border: 0; background: transparent; padding: 2px 0 6px; font-family: var(--f-mono); font-size: .72rem; font-weight: 700; color: var(--navy); cursor: pointer; touch-action: none; }
+.case-hide .grab { width: 40px; height: 5px; border-radius: 3px; background: var(--navy); opacity: .5; }
+.case-pill { position: fixed; z-index: 21; top: calc(env(safe-area-inset-top, 0px) + 8px); left: 50%; transform: translate(-50%, calc(-100% - env(safe-area-inset-top, 0px) - 20px)); max-width: min(70vw, 360px); display: flex; gap: 6px; align-items: center; background: var(--tape); color: var(--navy); border: 2px solid var(--navy); border-radius: 999px; box-shadow: var(--shadow-sm); padding: 5px 14px; font-weight: 700; font-size: .85rem; cursor: pointer; transition: transform .28s ease; touch-action: none; }
+.case-pill span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.case-pill.show { transform: translate(-50%, 0); }
+#report main { padding-top: var(--case-bar-h, 150px); }
 .case-bar .wrap { display: flex; align-items: center; gap: 12px; padding-block: 10px; }
 .case-bar .t { min-width: 0; flex: 1; }
 .case-bar .t b { display: block; font-family: var(--f-display); font-size: 1.15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.case-bar .t small { font-family: var(--f-mono); font-size: .75rem; }
+.case-bar .t small { display: block; font-family: var(--f-mono); font-size: .72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .jump { display: flex; gap: 8px; overflow-x: auto; padding: 10px 0 2px; scrollbar-width: none; }
 .jump::-webkit-scrollbar { display: none; }
 .jump a { flex: none; font-size: .85rem; text-decoration: none; color: var(--navy); border: 2px solid var(--navy); border-radius: 999px; padding: 2px 10px; background: var(--cloud); }
@@ -377,6 +384,8 @@ td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
   .avatar { width: 64px; height: 64px; font-size: 1.7rem; }
 }
 
+#interrogate-wrap:empty { display: none; }
+
 /* one-click version: the platform already pads the page for phone notches */
 body { padding-top: 0; padding-bottom: 0; }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 30; background: var(--sky); }
@@ -490,14 +499,16 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 
 <!-- ================= REPORT ================= -->
 <div id="report" hidden>
-  <div class="case-bar">
+  <div class="case-bar" id="case-bar">
     <div class="wrap">
       <button class="btn small" type="button" id="new-raid">← New raid</button>
       <div class="t"><b id="case-title">Case file</b><small id="case-meta"></small></div>
       <button class="btn small blue" type="button" id="share-btn" hidden>📸 Share</button>
     </div>
     <div class="wrap"><nav class="jump" id="jump" aria-label="Report sections"></nav></div>
+    <button class="case-hide" type="button" id="case-collapse" aria-label="Hide the case bar"><span class="grab" aria-hidden="true"></span>▴ hide</button>
   </div>
+  <button class="case-pill" type="button" id="case-pill" aria-label="Show the case bar" aria-expanded="true">▾ <span id="case-pill-title">Case</span></button>
   <main class="wrap">
     <section class="section" id="interrogate-wrap"></section>
     <div id="ai-sections"></div>
@@ -1693,7 +1704,67 @@ const SAMPLE_CASE = {
 return { SAMPLE_CHAT_TEXT, SAMPLE_TITLE, SAMPLE_CASE };
 })();
 
-const __m6_prompt = (() => {
+const __m6_casebar = (() => {
+// The yellow case bar: slides away while you read, comes back from a small tab.
+// Tap or swipe down on the tab to show it; tap "hide", swipe up, or keep scrolling to hide it.
+function initCaseBar() {
+  const report = document.getElementById("report");
+  const bar = document.getElementById("case-bar");
+  const pill = document.getElementById("case-pill");
+  const pillTitle = document.getElementById("case-pill-title");
+  const main = report?.querySelector("main");
+  if (!bar || !pill || !main) return { reset() {}, setTitle() {} };
+
+  let collapsed = false;
+  let anchorY = 0;
+
+  const measure = () => {
+    if (report.hidden) return;
+    const h = bar.offsetHeight;
+    if (h) main.style.setProperty("--case-bar-h", `${h + 8}px`);
+  };
+  const set = (c) => {
+    collapsed = c;
+    bar.classList.toggle("collapsed", c);
+    pill.classList.toggle("show", c);
+    bar.inert = c;
+    pill.setAttribute("aria-expanded", String(!c));
+    anchorY = window.scrollY;
+  };
+  const onSwipe = (el, fn) => {
+    let y0 = null;
+    el.addEventListener("touchstart", (e) => { y0 = e.touches[0].clientY; }, { passive: true });
+    el.addEventListener("touchend", (e) => {
+      if (y0 == null) return;
+      const dy = e.changedTouches[0].clientY - y0;
+      y0 = null;
+      fn(dy);
+    }, { passive: true });
+  };
+
+  pill.addEventListener("click", () => set(false));
+  document.getElementById("case-collapse")?.addEventListener("click", () => set(true));
+  onSwipe(pill, (dy) => { if (dy > 20) set(false); });
+  onSwipe(bar, (dy) => { if (dy < -20) set(true); });
+  // Picking a section from the bar: hide the bar so the section gets the whole screen.
+  document.getElementById("jump")?.addEventListener("click", (e) => { if (e.target.closest("a")) setTimeout(() => set(true), 60); });
+  // Reading: scrolling down past the top tucks the bar away. Scrolling up never forces it back.
+  window.addEventListener("scroll", () => {
+    if (report.hidden || collapsed) return;
+    if (window.scrollY > 80 && window.scrollY - anchorY > 60) set(true);
+  }, { passive: true });
+  window.addEventListener("resize", measure);
+
+  return {
+    reset() { set(false); requestAnimationFrame(measure); },
+    setTitle(t) { pillTitle.textContent = t; requestAnimationFrame(measure); },
+  };
+}
+
+return { initCaseBar };
+})();
+
+const __m7_prompt = (() => {
 // The detective's brain: system prompt, personas, spice levels and the JSON schema.
 
 const PERSONAS = {
@@ -1890,7 +1961,8 @@ const { computeStats, statsForAi, buildTranscript, makeNameMap, restoreDeep } = 
 const { renderCase, renderStats, roastText, esc } = __m3_report;
 const { makeShareCard } = __m4_share;
 const { SAMPLE_CHAT_TEXT, SAMPLE_CASE, SAMPLE_TITLE } = __m5_sample;
-const { buildSystemPrompt, buildUserMessage, CASE_SCHEMA } = __m6_prompt;
+const { initCaseBar } = __m6_casebar;
+const { buildSystemPrompt, buildUserMessage, CASE_SCHEMA } = __m7_prompt;
 const $ = (s) => document.querySelector(s);
 const store = {
   get(k, d) { try { const v = localStorage.getItem("fbi:" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -2014,11 +2086,13 @@ function openReport(chat, stats, isSample) {
   $("#report").hidden = false;
   $("#share-btn").hidden = true;
   $("#case-title").textContent = `Case: ${chat.title}`;
+  caseBar.setTitle(`Case: ${chat.title}`);
   $("#case-meta").textContent = `${stats.totalMessages.toLocaleString()} messages · ${stats.people.length} suspects · ${chat.source}`;
   $("#ai-sections").innerHTML = "";
   renderInterrogateCard();
   $("#stats-sections").innerHTML = renderStats(stats);
   buildJump();
+  caseBar.reset();
   window.scrollTo({ top: 0 });
 }
 
@@ -2153,6 +2227,7 @@ function showCase(cf) {
   $("#stats-sections").innerHTML = renderStats(state.stats, cf);
   $("#share-btn").hidden = false;
   buildJump();
+  caseBar.reset();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -2223,6 +2298,7 @@ function bind() {
 }
 
 buildPersonas();
+const caseBar = initCaseBar();
 bind();
 $("#ai-text").innerHTML = aiLabel();
 connect();
