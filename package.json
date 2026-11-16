@@ -1,0 +1,18 @@
+{
+  "name": "fbi-open-up",
+  "version": "1.0.0",
+  "description": "FBI, OPEN UP! A funny forensic roast of your group chats.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0"
+  }
+}

@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FBI, OPEN UP! · Chat Raid</title>
+<meta name="description" content="Drop your WhatsApp, Telegram or Instagram chat export. We find out who's the group mom, who has a crush, and what nobody's saying.">
+<meta name="theme-color" content="#ffd23f">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚨</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Outfit:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="siren" aria-hidden="true"></div>
+
+<!-- ================= LANDING ================= -->
+<div id="landing">
+  <header class="topbar">
+    <div class="wrap">
+      <a class="logo" href="#" aria-label="FBI, OPEN UP! home"><span class="badge">FBI</span> OPEN UP!</a>
+      <div class="top-actions">
+        <a class="btn small hide-sm" href="#how">How to export</a>
+        <button class="btn small yellow" type="button" id="promo-btn">🎟️ Promo code</button>
+      </div>
+    </div>
+  </header>
+
+  <section class="wrap hero">
+    <div>
+      <h1><span class="knock">FBI,</span><br>OPEN UP!</h1>
+      <p class="sub">We've seized your group chat. Everyone's coming in for questioning.</p>
+      <div class="chips">
+        <span class="chip y">Who's the group mom?</span><span class="chip p">Who has a crush?</span><span class="chip m">Who's secretly annoyed?</span><span class="chip l">Who's the ghost?</span>
+      </div>
+    </div>
+    <div class="door-scene" aria-hidden="true">
+      <div class="door"><span class="knob"></span></div>
+      <span class="bang b1">BANG!</span>
+      <span class="bang b2">BANG!</span>
+      <span class="bang b3">open up 😤</span>
+      <div class="tape"><span>CHAT EVIDENCE • DO NOT CROSS • CHAT EVIDENCE • DO NOT CROSS • CHAT EVIDENCE • DO NOT CROSS • CHAT EVIDENCE • DO NOT CROSS • </span></div>
+    </div>
+  </section>
+
+  <section class="wrap section" id="raid">
+    <div class="raid">
+      <div class="card">
+        <label class="drop" id="drop" for="file">
+          <span class="bag">🧳</span>
+          <h3>Hand over the evidence</h3>
+          <p>Drop your chat export here: a WhatsApp <b>.zip</b> or <b>.txt</b>, Telegram <b>result.json</b>, or Instagram <b>message_1.json</b>.</p>
+          <span class="drop-actions">
+            <span class="btn primary">📂 Choose file</span>
+          </span>
+          <small>Your file is opened on this device. Nothing is uploaded until you start the interrogation.</small>
+        </label>
+        <input type="file" id="file" accept=".zip,.txt,.json,application/zip,text/plain,application/json" multiple hidden>
+        <div class="price-strip" id="price-strip">
+          <button class="btn small" type="button" id="sample-btn">🕵️ Try a sample raid</button>
+          <span id="price-text"></span>
+        </div>
+      </div>
+
+      <div class="card opts">
+        <div>
+          <span class="opt-title">Who's interrogating?</span>
+          <div class="personas" id="personas" role="radiogroup" aria-label="Interrogator"></div>
+        </div>
+        <div class="row-opts">
+          <div>
+            <span class="opt-title">Spice level</span>
+            <div class="seg" role="radiogroup" aria-label="Spice level">
+              <input type="radio" name="spice" id="sp-w" value="wholesome"><label for="sp-w">😇 Wholesome</label>
+              <input type="radio" name="spice" id="sp-s" value="spicy" checked><label for="sp-s">🌶️ Spicy</label>
+              <input type="radio" name="spice" id="sp-n" value="nuclear"><label for="sp-n">☢️ Nuclear</label>
+            </div>
+          </div>
+          <div>
+            <span class="opt-title">Language</span>
+            <div class="seg" role="radiogroup" aria-label="Language">
+              <input type="radio" name="lang" id="lg-en" value="english" checked><label for="lg-en">English</label>
+              <input type="radio" name="lang" id="lg-hi" value="hinglish"><label for="lg-hi">Hinglish</label>
+            </div>
+          </div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="anon" checked> Hide real names from the AI (they come back in your report)</label>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap section">
+    <div class="section-head"><span class="label">What you get</span><h2>The full case file</h2></div>
+    <div class="features">
+      <div class="feature"><b>🧑‍⚖️</b><h3>Mugshots for everyone</h3><p>Each person's real role in the group, their charges, what they type versus what they mean, and a roast.</p></div>
+      <div class="feature"><b>💘</b><h3>Ships &amp; beefs</h3><p>Crushes, besties, rivals and situationships, with who's putting in more effort.</p></div>
+      <div class="feature"><b>🤐</b><h3>The unsaid</h3><p>Redacted findings you tap to declassify: the stuff nobody says out loud.</p></div>
+      <div class="feature"><b>🏆</b><h3>Awards night</h3><p>Most likely to leave on read, unpaid therapist of the year, and more.</p></div>
+      <div class="feature"><b>🛠️</b><h3>The fix-it plan</h3><p>Honest, kind advice for making the group (or the situationship) work better.</p></div>
+      <div class="feature"><b>📊</b><h3>Free stats, instantly</h3><p>Who talks most, reply speeds, night owls, conversation killers, heatmaps and badges. No AI needed.</p></div>
+    </div>
+  </section>
+
+  <section class="wrap section" id="how">
+    <div class="section-head"><span class="label">Step 1</span><h2>How to export your chat</h2><p class="muted">Choose "Without media". It's smaller and we don't look at photos anyway.</p></div>
+    <div class="howto">
+      <details><summary>WhatsApp on Android</summary><ol><li>Open the chat or group.</li><li>Tap ⋮ (top right), then <b>More</b>, then <b>Export chat</b>.</li><li>Pick <b>Without media</b>.</li><li>Save the .zip to Files or Drive, then choose it here.</li></ol></details>
+      <details><summary>WhatsApp on iPhone</summary><ol><li>Open the chat and tap the name at the top.</li><li>Scroll down and tap <b>Export Chat</b>.</li><li>Pick <b>Without Media</b>.</li><li>Choose <b>Save to Files</b>, then choose that .zip here.</li></ol></details>
+      <details><summary>Telegram (desktop app)</summary><ol><li>Open the chat, click ⋮, then <b>Export chat history</b>.</li><li>Untick photos and videos, set format to <b>Machine-readable JSON</b>.</li><li>Drop the <b>result.json</b> here.</li></ol></details>
+      <details><summary>Instagram DMs</summary><ol><li>Settings, then <b>Accounts Centre</b>, <b>Your information and permissions</b>, <b>Download your information</b>.</li><li>Pick <b>Messages</b>, format <b>JSON</b>.</li><li>When the download is ready, open <b>messages/inbox/&lt;chat&gt;/</b> and drop <b>message_1.json</b> here (or the whole zip).</li></ol></details>
+    </div>
+  </section>
+
+  <section class="wrap section">
+    <div class="section-head"><span class="label">The fine print</span><h2>Your secrets are safe-ish</h2></div>
+    <div class="card privacy">
+      <div><b>📱</b><p>The file is opened and counted <b>on your device</b>. The free stats never leave your phone.</p></div>
+      <div><b>🙈</b><p>For the AI roast we send a <b>sample</b> of messages with names swapped for "Suspect A, B, C". Numbers and emails are removed.</p></div>
+      <div><b>🗑️</b><p>We <b>store nothing</b>. No accounts, no database. Close the tab and it's gone.</p></div>
+      <div><b>🤡</b><p>This is <b>for fun</b>, not a psychological assessment. Maybe ask your friends before roasting them publicly.</p></div>
+    </div>
+  </section>
+
+  <footer class="wrap">FBI, OPEN UP! is a joke website and is not affiliated with any government agency. Agent Brandon is fictional, sadly.</footer>
+</div>
+
+<!-- ================= REPORT ================= -->
+<div id="report" hidden>
+  <div class="case-bar">
+    <div class="wrap">
+      <button class="btn small" type="button" id="new-raid">← New raid</button>
+      <div class="t"><b id="case-title">Case file</b><small id="case-meta"></small></div>
+      <button class="btn small blue" type="button" id="share-btn" hidden>📸 Share</button>
+    </div>
+    <div class="wrap"><nav class="jump" id="jump" aria-label="Report sections"></nav></div>
+  </div>
+  <main class="wrap">
+    <section class="section" id="interrogate-wrap"></section>
+    <div id="ai-sections"></div>
+    <div id="stats-sections"></div>
+  </main>
+  <footer class="wrap">For fun, not a psychological assessment. Nothing from this report is stored on our side.</footer>
+</div>
+
+<!-- overlay -->
+<div class="overlay" id="overlay" hidden role="alert" aria-live="assertive">
+  <div class="box">
+    <div class="door-mini" aria-hidden="true"><div class="door"><span class="knob"></span></div></div>
+    <h2 id="ov-title">FBI, OPEN UP!</h2>
+    <p class="line" id="ov-line">Kicking down the door…</p>
+    <div class="steps" id="ov-steps"></div>
+  </div>
+</div>
+
+<!-- promo / paywall modal -->
+<div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div class="card">
+    <h3 id="modal-title">🎟️ Got a badge number?</h3>
+    <p id="modal-text" class="muted">Enter your promo code for unlimited raids.</p>
+    <div id="pay-area" hidden>
+      <button class="btn primary big" type="button" id="pay-btn" style="width:100%">Pay ₹5 with Razorpay</button>
+      <p class="or">or use a promo code</p>
+    </div>
+    <input type="text" id="promo-input" placeholder="Promo code" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <p class="err" id="promo-err"></p>
+    <div class="row">
+      <button class="btn yellow" type="button" id="promo-apply">Apply code</button>
+      <button class="btn" type="button" id="modal-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
