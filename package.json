@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "build:artifact": "node artifact/build.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0"

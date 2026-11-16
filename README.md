@@ -9,7 +9,23 @@ A funny, forensic roast of your group chats. Drop a WhatsApp, Telegram or Instag
 
 ---
 
-## Run it on your computer
+## The easiest way: one click
+
+Open the published page on claude.ai: **https://claude.ai/artifact/9sUSdUot7GxE3KUkAm3UNr**
+
+- No install, no server, no API key. It works on phone, tablet and computer.
+- Drop a chat export, pick an investigator, tap **Start investigation**.
+- The investigation runs on the **viewer's own Claude account**. Claude asks permission the first time. The free stats and the sample raid work for anyone.
+- To give friends the link, open the page and use its **Share** menu. Each friend needs to be signed in to Claude for the investigation.
+- No promo codes or ₹5 paywall in this version, because each person's own Claude usage pays for their investigation. Use the server version below when you want to charge.
+
+There's also `dist/fbi-open-up-offline.html`: download it and double-click it to get the free stats and the sample raid without the internet. The investigation needs claude.ai.
+
+After changing the site code, rebuild the one-click page with `npm run build:artifact`.
+
+---
+
+## Run it on your computer (server version, with promo codes and payments)
 
 You need **Node.js 20 or newer**. Get the LTS version from https://nodejs.org.
 
