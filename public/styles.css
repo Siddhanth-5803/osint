@@ -198,6 +198,14 @@ footer { padding-block: 30px 50px; font-size: .9rem; color: var(--navy-soft); te
 .mix .r span:last-child { font-family: var(--f-mono); text-align: right; font-variant-numeric: tabular-nums; }
 .callout { border: var(--line); border-radius: 12px; padding: 12px 16px; background: #ffe1e4; font-weight: 600; }
 
+/* speciality report */
+.files { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+.file { position: relative; background: var(--cloud); border: var(--line); border-radius: 4px 16px 16px 16px; box-shadow: var(--shadow); padding: 30px 18px 18px; display: grid; gap: 10px; align-content: start; min-width: 0; margin-top: 14px; }
+.file-tab { position: absolute; top: -17px; left: -3px; background: var(--lilac); border: var(--line); border-bottom: 0; border-radius: 10px 10px 0 0; padding: 2px 12px; font-family: var(--f-mono); font-size: .75rem; font-weight: 700; }
+.file:nth-child(4n+2) .file-tab { background: var(--pink); } .file:nth-child(4n+3) .file-tab { background: var(--mint); } .file:nth-child(4n+4) .file-tab { background: var(--orange); }
+.file h3 { font-size: 1.3rem; overflow-wrap: anywhere; }
+.fverdict { background: var(--tape); border: 2px solid var(--navy); border-radius: 10px; padding: 8px 12px; font-weight: 700; }
+
 /* mugshots */
 .mugs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
 .mug { background: var(--cloud); border: var(--line); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; display: grid; align-content: start; min-width: 0; }
@@ -349,7 +357,7 @@ td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 @media (max-width: 860px) {
   .hero, .raid, .verdict, .two-col { grid-template-columns: 1fr; }
   .door-scene { max-width: 300px; }
-  .mugs, .pairs, .privacy { grid-template-columns: 1fr; }
+  .mugs, .pairs, .privacy, .files { grid-template-columns: 1fr; }
   .features { grid-template-columns: repeat(2, 1fr); }
   .interrogate { grid-template-columns: 1fr; }
 }

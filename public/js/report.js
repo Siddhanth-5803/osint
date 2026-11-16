@@ -47,6 +47,19 @@ export function renderCase(cf, stats) {
   </div>
 </section>`);
 
+  const fr = cf.focus_report;
+  if (fr && Array.isArray(fr.items) && fr.items.length) {
+    const files = fr.items.map((it, i) => `
+<article class="file">
+  <span class="file-tab">FILE ${String(i + 1).padStart(2, "0")}</span>
+  <h3>${esc(it.title)}</h3>
+  <p>${esc(it.body)}</p>
+  <p class="fverdict">⚖️ ${esc(it.verdict)}</p>
+  ${(it.evidence || []).length ? `<small class="mono muted">Evidence: ${esc(it.evidence.join(", "))}</small>` : ""}
+</article>`).join("");
+    parts.push(section("focus", "Speciality report", esc(fr.title || "The investigator's report"), esc(fr.intro || ""), `<div class="files">${files}</div>`));
+  }
+
   const mugs = (cf.suspects || []).map((s, i) => {
     const p = findP(s.name);
     const color = colorFor(p ? p.idx : i);

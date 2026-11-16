@@ -86,7 +86,7 @@ async function handleApi(req, res, url) {
 
   if (req.method === "POST" && url.pathname === "/api/analyze") {
     const body = await readJson(req);
-    const { stats, transcript, persona = "fbi", spice = "spicy", promo, payment } = body;
+    const { stats, transcript, persona = "sherlock", spice = "spicy", promo, payment } = body;
     if (!stats || typeof stats !== "object" || typeof transcript !== "string" || transcript.length < 20) {
       return send(res, 400, { error: "No chat found in the request." });
     }

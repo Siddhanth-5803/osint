@@ -119,6 +119,11 @@ function mockCase(stats) {
       exhibits: [{ msg_id: "#1", speaker: a, quote: "guys??", why: "The opening of every conversation." }],
       timeline: [{ date: stats?.range?.from || "", title: "The chat begins", what_happened: "Nobody knew what was coming." }],
       fix_it: [{ problem: "One person starts every conversation.", fix: "Someone else start one this week.", for_whom: "everyone" }],
+      focus_report: {
+        title: "Mock Speciality Report",
+        intro: "This section changes with the investigator you pick.",
+        items: [{ title: `${a} vs ${b}`, body: "A mock fight about who booked nothing.", verdict: "Started by nobody. Won by the memes.", evidence: ["stat:pairs"] }],
+      },
       final_verdict: "Guilty of being a perfectly normal, slightly unhinged group chat.",
       share_lines: ["We got raided by the FBI.", `${a} is the group mom. Confirmed.`, "Chaos level: 72%"],
     },

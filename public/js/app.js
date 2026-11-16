@@ -11,12 +11,13 @@ const store = {
 };
 
 const PERSONA_INFO = {
-  fbi: ["🕴️", "Agent Brandon", "Your assigned FBI agent. Has seen everything."],
-  aunty: ["👵", "Sharma Aunty", "Saw your chat. Has notes. Beta, why?"],
-  therapist: ["🛋️", "Dr. Overthink", "A tired therapist. Let's sit with that."],
-  genz: ["💅", "Gen-Z Bestie", "Spills the tea. No crumbs."],
-  nature: ["🦜", "Nature Doc", "Observes your group in the wild."],
+  sherlock: ["🕵️", "Sherlock", "Investigates the fights. Who started it, who won, who's still sulking."],
+  cupid: ["💘", "Cupid", "Love matters. Who likes whom, the signals and the odds."],
+  aunty: ["👵", "Aunty", "Pure sarcasm. Beta, 400 stickers and no career plans?"],
+  gossip: ["💅", "Gossip Queen", "Character analysis. Who everyone really is. Spills it all."],
+  osho: ["🧘", "Osho", "Calm, deep life lessons hidden in your petty drama."],
 };
+const DEFAULT_PERSONA = "sherlock";
 
 const state = { config: null, chat: null, stats: null, caseFile: null, isSample: false, busy: false };
 
@@ -27,7 +28,7 @@ function toast(msg, ms = 2600) {
   clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), ms);
 }
 const settings = () => ({
-  persona: document.querySelector('input[name="persona"]:checked')?.value || "fbi",
+  persona: document.querySelector('input[name="persona"]:checked')?.value || DEFAULT_PERSONA,
   spice: document.querySelector('input[name="spice"]:checked')?.value || "spicy",
   anon: $("#anon").checked,
 });
@@ -43,8 +44,9 @@ async function api(path, body) {
 // ---------- landing setup ----------
 function buildPersonas() {
   const saved = store.get("settings", {});
+  if (!PERSONA_INFO[saved.persona]) saved.persona = DEFAULT_PERSONA;
   $("#personas").innerHTML = Object.entries(PERSONA_INFO).map(([k, [emo, name, desc]]) => `
-<div class="persona"><input type="radio" name="persona" id="pe-${k}" value="${k}" ${(saved.persona || "fbi") === k ? "checked" : ""}>
+<div class="persona"><input type="radio" name="persona" id="pe-${k}" value="${k}" ${saved.persona === k ? "checked" : ""}>
 <label for="pe-${k}"><b>${emo}</b><span>${name}</span><small>${desc}</small></label></div>`).join("");
   if (saved.spice) { const el = document.querySelector(`input[name="spice"][value="${saved.spice}"]`); if (el) el.checked = true; }
   if (typeof saved.anon === "boolean") $("#anon").checked = saved.anon;
@@ -147,15 +149,15 @@ function renderInterrogateCard(errorMsg = "") {
   $("#interrogate-wrap").innerHTML = `
 <div class="card interrogate">
   <div>
-    <h2>🚨 Bring them in for questioning</h2>
-    <p>The stats below are free. The interrogation reads the messages and writes mugshots, ships &amp; beefs, the unsaid, awards and a fix-it plan.</p>
+    <h2>🚨 Send in the investigator</h2>
+    <p>The stats below are free. Your investigator reads the messages and writes their speciality report, plus mugshots, ships &amp; beefs, the unsaid, awards and a fix-it plan.</p>
     <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
     <p class="note">${esc(priceNote)}</p>
     ${errorMsg ? `<p class="note" style="color:#ffb3b9">⚠️ ${esc(errorMsg)}</p>` : ""}
   </div>
   <div style="display:grid;gap:10px">
     <button class="btn primary big" type="button" id="go" ${disabled ? "disabled" : ""}>Start interrogation</button>
-    <button class="btn small" type="button" id="change-opts">Change interrogator</button>
+    <button class="btn small" type="button" id="change-opts">Change investigator</button>
   </div>
 </div>`;
   $("#go").addEventListener("click", () => startInterrogation());
@@ -164,7 +166,7 @@ function renderInterrogateCard(errorMsg = "") {
 
 function buildJump() {
   const ids = [...document.querySelectorAll("#ai-sections section, #stats-sections section")].map((s) => [s.id, s.querySelector("h2")?.textContent || s.id]);
-  const short = { verdict: "Verdict", suspects: "Mugshots", ships: "Ships & beefs", unsaid: "Unsaid", awards: "Awards", fixit: "Fix-it", evidence: "Evidence", final: "Final", lineup: "Who talks most", interest: "Who likes who", badges: "Badges", web: "String board", activity: "Activity", speed: "Reply speed", words: "Words" };
+  const short = { focus: "Speciality", verdict: "Verdict", suspects: "Mugshots", ships: "Ships & beefs", unsaid: "Unsaid", awards: "Awards", fixit: "Fix-it", evidence: "Evidence", final: "Final", lineup: "Who talks most", interest: "Who likes who", badges: "Badges", web: "String board", activity: "Activity", speed: "Reply speed", words: "Words" };
   $("#jump").innerHTML = ids.map(([id, t]) => `<a href="#${id}">${esc(short[id] || t)}</a>`).join("");
 }
 
@@ -176,11 +178,11 @@ function goLanding() {
 
 // ---------- interrogation ----------
 const LINES = {
-  fbi: ["Kicking down the door…", "Agent Brandon is reading your 2 a.m. texts. Yikes.", "Cross-checking alibis…", "Counting every 'hahaha' that wasn't funny…", "Identifying the group's unpaid therapist…", "Writing up the charges…"],
-  aunty: ["Aunty is putting on her reading glasses…", "Beta, who is this boy who replies so fast?", "Calling Sharma ji for a second opinion…", "Judging your emoji usage…", "Preparing the rishta report…"],
-  therapist: ["Dr. Overthink is taking a deep breath…", "Let's sit with these 'k' messages…", "Noting a lot of unprocessed 🙂…", "Drafting gentle but devastating notes…"],
-  genz: ["omg wait let me read this…", "the tea is HOT 🍵", "screenshotting for the group chat about the group chat…", "it's giving… chaos", "writing the receipts rn"],
-  nature: ["Approaching the group chat quietly…", "A rare double text, observed in the wild…", "The alpha replier establishes dominance…", "Documenting the mating ritual of the 'haha no reason'…"],
+  sherlock: ["Sherlock is lighting his pipe…", "You replied in 4 seconds, then deleted it. Elementary.", "Reconstructing every argument…", "Working out who apologised first…", "Deducing who's still sulking…"],
+  cupid: ["Cupid is sharpening his arrows…", "Measuring reply speeds for romantic intent…", "Gasping at the 2 a.m. texts…", "Counting the hearts. And the lack of hearts…", "Calculating the odds…"],
+  aunty: ["Aunty is putting on her reading glasses…", "Beta, who is this boy who replies so fast?", "Calling Sharma ji for a second opinion…", "Judging your emoji usage…", "Preparing the taunts…"],
+  gossip: ["Okay so you did NOT hear this from me…", "Reading every single message twice…", "Building everyone's character file…", "The tea is HOT 🍵", "Finding out who people really are…"],
+  osho: ["Breathing in. Breathing out…", "Observing the ego in the group chat…", "Contemplating the meaning of 'k'…", "Finding the lesson in the drama…", "Letting go of the blue ticks…"],
 };
 
 async function startInterrogation(payment = null) {
@@ -219,12 +221,12 @@ async function startInterrogation(payment = null) {
 
 async function runSample(s) {
   state.busy = true;
-  showOverlay("FBI, OPEN UP!", ["Seizing the evidence", "Interrogating suspects", "Writing the case file"], LINES.fbi);
+  showOverlay("FBI, OPEN UP!", ["Seizing the evidence", "Interrogating suspects", "Writing the case file"], LINES.sherlock);
   for (let i = 0; i < 3; i++) { setStep(i); await sleep(900); }
   state.busy = false;
   hideOverlay();
   showCase(SAMPLE_CASE);
-  if (s.persona !== "fbi" || s.spice !== "spicy") toast("Sample roast is pre-written by Agent Brandon. Your own chats use the interrogator you pick.", 4500);
+  if (s.persona !== DEFAULT_PERSONA || s.spice !== "spicy") toast("The sample is pre-written by Sherlock. Your own chats get the investigator you pick.", 4500);
 }
 
 function showCase(cf) {

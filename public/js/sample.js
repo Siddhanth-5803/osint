@@ -117,7 +117,7 @@ export const SAMPLE_CASE = {
   chat_type: "group",
   classification: "friend group with one very obvious crush and one very tired planner",
   raid_summary:
-    "Agent Brandon here. I have monitored this chat for ten days. Meera is running a travel agency for free. Aarav changes the dates of an entire trip faster than he replies to anyone who is not Zoya. Kabir hosts a philosophy podcast at 2 a.m. for an audience of one.",
+    "Sherlock here. Ten days of messages, and the case solved itself in the first hour. Meera is running a travel agency for free. Aarav moves an entire trip faster than he replies to anyone who isn't Zoya. Kabir types paragraphs at 2 a.m. and deletes them. Elementary.",
   one_liner: "Aarav likes Zoya. Zoya knows. The group knows. Aarav thinks nobody knows.",
   chaos_level: 74,
   chaos_label: "Organised chaos, emphasis on chaos",
@@ -227,6 +227,16 @@ export const SAMPLE_CASE = {
     { problem: "Aarav's crush is affecting group decisions.", fix: "Talk to Zoya directly, one-on-one. The group chat is not a confession booth.", for_whom: "Aarav" },
     { problem: "Kabir deletes what he really wants to say.", fix: "Send it to Meera, or to the group. People here care more than he thinks.", for_whom: "Kabir" },
   ],
+  focus_report: {
+    title: "Sherlock's Fight Files",
+    intro: "Four conflicts, one root cause: nobody says what they actually mean. I have reconstructed each one from the evidence.",
+    items: [
+      { title: "The Date Incident: Meera vs Aarav", body: "Meera's sheet sat empty for three days. Zoya mentioned one date clash and Aarav moved the whole trip in sixty seconds. Meera said it out loud: \"we change dates for zoya instantly\". Aarav called it \"logical\".", verdict: "Started by Aarav's crush. Won by Meera. Aarav still thinks it was logical.", evidence: ["#40", "#41", "#42", "#43"] },
+      { title: "The Cold War: Kabir vs Aarav", body: "Kabir suggested Pondicherry and got \"nah goa is the plan bro\". He said the trip wasn't worth it for him and got \"bro don't be like that\". Both times he answered \"ok\". An \"ok\" from Kabir is a sealed envelope.", verdict: "Started by Aarav. Nobody won. Very much unresolved.", evidence: ["#17", "#18", "#20", "#80", "#81", "#82"] },
+      { title: "Meera vs the Entire Group", body: "Two sheets, one itinerary, \"pls actually do it this time\", then flights went from 6k to 8k because nobody booked. Her weapon of choice: the 🙂.", verdict: "Started by everyone's laziness. Won by Meera, morally. Still unpaid.", evidence: ["#12", "#13", "#76", "#83"] },
+      { title: "The Silent One: Meera vs Zoya", body: "No direct argument, which is the giveaway. Every time Zoya's one-line reply moves the plan, Meera answers with a scream or a 🙂. Two people who never speak to each other directly are having the loudest fight in the chat.", verdict: "Not started by anyone. Felt by everyone. Deeply unresolved.", evidence: ["#86", "#87", "#88"] }
+    ],
+  },
   final_verdict: "Guilty of being a lovely friend group that will plan this trip forever and never go. Sentence: one honest conversation each.",
   share_lines: ["We got raided by the FBI. Verdict: Aarav likes Zoya.", "Meera is the unpaid group mom. Confirmed by evidence.", "Chaos level 74%. Goa trip odds: zero."],
 };
