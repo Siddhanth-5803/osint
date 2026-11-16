@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config.js";
-import { buildSystemPrompt, buildUserMessage, CASE_SCHEMA } from "./prompt.js";
+import { buildSystemPrompt, buildUserMessage, buildAskerBlock, CASE_SCHEMA } from "./prompt.js";
 
 let client = null;
 const getClient = () => (client ??= new Anthropic());
@@ -17,7 +17,7 @@ export class AnalysisError extends Error {
   }
 }
 
-export async function analyzeChat({ stats, transcript, persona, spice, depth = "standard" }) {
+export async function analyzeChat({ stats, transcript, persona, spice, depth = "standard", asker = {} }) {
   const model = config.depthModels[depth] || config.depthModels.standard;
   if (config.mockAiFile) return { caseFile: JSON.parse(fs.readFileSync(config.mockAiFile, "utf8")), model: "mock-file" };
   if (config.mockAi) return mockCase(stats);
@@ -28,7 +28,7 @@ export async function analyzeChat({ stats, transcript, persona, spice, depth = "
   const params = {
     model,
     max_tokens: 16000,
-    system: buildSystemPrompt({ persona, spice }),
+    system: [buildSystemPrompt({ persona, spice }), buildAskerBlock(asker)].filter(Boolean).join("\n\n"),
     messages: [{ role: "user", content: buildUserMessage({ stats, transcript }) }],
     output_config: { effort: config.effort, format: { type: "json_schema", schema: CASE_SCHEMA } },
   };
@@ -110,6 +110,7 @@ function mockCase(stats) {
         traits: { chaos: 40 + i * 7, loyalty: 80 - i * 5, drama: 30 + i * 9, braincells: 60, rizz: 20 + i * 11 },
         evidence: ["stat:messages"],
         confidence: "low",
+        receipts: [{ msg_id: `#${3 + i}`, translation: "(mock translation)", reply_id: "", reply_translation: "", note: "Mock receipt." }],
       })),
       pairs: [
         { a, b, label: "Chaotic besties", type: "besties", warmth: 80, tension: 20, who_invests_more: a, summary: "They reply to each other faster than anyone else.", evidence: ["stat:pairs"], confidence: "low" },

@@ -294,7 +294,7 @@ export function restoreDeep(value, restore) {
   return value;
 }
 
-const scrub = (t) => t.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "<email>").replace(/\+?\d[\d\s-]{8,}\d/g, "<number>");
+export const scrub = (t) => t.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "<email>").replace(/\+?\d[\d\s-]{8,}\d/g, "<number>");
 
 // Picks a representative sample of the chat that fits the budget (characters).
 export function buildTranscript(chat, stats, { anon = null, budget = 150_000 } = {}) {

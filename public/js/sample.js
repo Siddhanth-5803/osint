@@ -139,6 +139,10 @@ export const SAMPLE_CASE = {
       redeeming_quality: "Genuinely the glue. Checks on Kabir every single time.",
       texting_style: "Clear asks, deadlines, then a 🙂 that should be classified as a weapon.",
       traits: { chaos: 22, loyalty: 96, drama: 41, braincells: 92, rizz: 35 }, evidence: ["#90", "#62", "#20"], confidence: "high",
+      receipts: [
+        { msg_id: "#42", translation: "", reply_id: "#43", reply_translation: "", note: "The only time anyone said the quiet part out loud." },
+        { msg_id: "#82", translation: "", reply_id: "#83", reply_translation: "", note: "The 🙂 is load-bearing." },
+      ],
     },
     {
       name: "Aarav", role: "The Not-So-Secret Admirer", role_emoji: "💘",
@@ -151,6 +155,10 @@ export const SAMPLE_CASE = {
       redeeming_quality: "Always says yes to plans and actually offered to book.",
       texting_style: "Fast, eager, all caps when excited, follows every Zoya message like a golden retriever.",
       traits: { chaos: 55, loyalty: 74, drama: 48, braincells: 51, rizz: 18 }, evidence: ["#8", "#53", "#54", "#86"], confidence: "high",
+      receipts: [
+        { msg_id: "#10", translation: "", reply_id: "#11", reply_translation: "", note: "Sent one minute after Zoya's 'lol'. There was a reason." },
+        { msg_id: "#56", translation: "", reply_id: "#57", reply_translation: "", note: "Corrected himself 0 seconds too late." },
+      ],
     },
     {
       name: "Kabir", role: "The 2 a.m. Philosopher", role_emoji: "🌙",
@@ -163,6 +171,10 @@ export const SAMPLE_CASE = {
       redeeming_quality: "The most honest person in the chat when he lets himself be.",
       texting_style: "Short in the day, deep at night, then deletes the deep part.",
       traits: { chaos: 30, loyalty: 70, drama: 52, braincells: 88, rizz: 40 }, evidence: ["#19", "#20", "#71", "#78"], confidence: "medium",
+      receipts: [
+        { msg_id: "#71", translation: "", reply_id: "#73", reply_translation: "", note: "A confession, followed by another deletion." },
+        { msg_id: "#81", translation: "", reply_id: "#82", reply_translation: "", note: "An 'ok' from Kabir is a sealed envelope." },
+      ],
     },
     {
       name: "Zoya", role: "The Strategic Lurker", role_emoji: "👀",
@@ -175,6 +187,10 @@ export const SAMPLE_CASE = {
       redeeming_quality: "Low drama. Never starts a fight.",
       texting_style: "Late, lowercase, one word. Maximum impact per character.",
       traits: { chaos: 35, loyalty: 55, drama: 20, braincells: 80, rizz: 77 }, evidence: ["#7", "#38", "#84"], confidence: "medium",
+      receipts: [
+        { msg_id: "#9", translation: "", reply_id: "#10", reply_translation: "", note: "Four hours to reply. One second to get a reply." },
+        { msg_id: "#85", translation: "", reply_id: "#86", reply_translation: "", note: "Three words moved a five-person trip." },
+      ],
     },
     {
       name: "Rohan", role: "The Hype Man & Meme Dealer", role_emoji: "📣",
@@ -187,6 +203,10 @@ export const SAMPLE_CASE = {
       redeeming_quality: "First to say yes, fills the sheet, keeps the mood up.",
       texting_style: "Caps, emojis, memes. Zero thoughts, maximum vibes.",
       traits: { chaos: 70, loyalty: 88, drama: 30, braincells: 45, rizz: 50 }, evidence: ["#2", "#28", "#29", "#41"], confidence: "high",
+      receipts: [
+        { msg_id: "#67", translation: "", reply_id: "#68", reply_translation: "", note: "Volunteered without volunteering." },
+        { msg_id: "#4", translation: "", reply_id: "#5", reply_translation: "", note: "First to say yes. Every time." },
+      ],
     },
   ],
   pairs: [
@@ -210,10 +230,10 @@ export const SAMPLE_CASE = {
     { title: "Lifetime Achievement in 💀", emoji: "💀", winner: "Rohan", reason: "Reacted to a crisis with skulls, consistently." },
   ],
   exhibits: [
-    { msg_id: "#9", speaker: "Aarav", quote: "haha no reason just asking", why: "Sent seconds after Zoya's 'lol'. There was a reason." },
+    { msg_id: "#10", speaker: "Aarav", quote: "haha no reason just asking", why: "Sent seconds after Zoya's 'lol'. There was a reason." },
     { msg_id: "#42", speaker: "Meera", quote: "wow ok so we change dates for zoya instantly but my sheet sat empty for 3 days", why: "The only time anyone said the quiet part out loud." },
     { msg_id: "#71", speaker: "Kabir", quote: "sometimes i type a whole paragraph in here and then delete it", why: "A confession, followed immediately by another deletion." },
-    { msg_id: "#64", speaker: "Meera", quote: "this chat is very active when it's memes and very dead when it's money", why: "The group's thesis statement." },
+    { msg_id: "#65", speaker: "Meera", quote: "this chat is very active when it's memes and very dead when it's money", why: "The group's thesis statement." },
   ],
   timeline: [
     { date: "2026-02-02", title: "Goa is proposed", what_happened: "Everyone is in. Hope is high." },

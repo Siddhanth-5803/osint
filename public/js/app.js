@@ -1,10 +1,12 @@
 import { parseFiles } from "./parser.js";
-import { computeStats, statsForAi, buildTranscript, makeNameMap, restoreDeep } from "./stats.js";
+import { computeStats, statsForAi, buildTranscript, makeNameMap, restoreDeep, scrub } from "./stats.js";
+import { coerceCase } from "./casefile.js";
+import { askerHtml, readAsker } from "./asker.js";
 import { renderCase, renderStats, roastText, esc } from "./report.js";
 import { makeShareCard, shareOrDownload } from "./share.js";
 import { SAMPLE_CHAT_TEXT, SAMPLE_CASE, SAMPLE_TITLE } from "./sample.js";
 import { initCaseBar } from "./casebar.js";
-import { DEPTHS, DEFAULT_DEPTH } from "./depth.js";
+import { DEPTHS, DEFAULT_DEPTH, DEPTH_BUDGET } from "./depth.js";
 
 const $ = (s) => document.querySelector(s);
 const store = {
@@ -38,7 +40,12 @@ const settings = () => ({
 function saveSettings() { store.set("settings", settings()); }
 
 async function api(path, body) {
-  const res = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+  let res;
+  try {
+    res = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+  } catch {
+    throw Object.assign(new Error("Couldn't reach the server. Check your internet and try again."), { status: 0 });
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status, data });
   return data;
@@ -93,7 +100,9 @@ async function readFiles(fileList) {
   for (const f of fileList) {
     if (/\.zip$/i.test(f.name) || f.type === "application/zip") {
       if (!window.JSZip) throw new Error("Couldn't load the zip reader. Check your internet, or unzip the file and drop the .txt instead.");
-      const zip = await window.JSZip.loadAsync(f);
+      let zip;
+      try { zip = await window.JSZip.loadAsync(f); }
+      catch { throw new Error("That zip file couldn't be opened. Export the chat again, or unzip it and drop the .txt inside."); }
       const entries = Object.values(zip.files).filter((e) => !e.dir && /\.(txt|json)$/i.test(e.name) && !/__MACOSX/.test(e.name));
       for (const e of entries) {
         let name = e.name.split("/").pop();
@@ -137,7 +146,7 @@ function loadSample() {
 
 // ---------- report ----------
 function openReport(chat, stats, isSample) {
-  Object.assign(state, { chat, stats, caseFile: null, isSample });
+  Object.assign(state, { chat, stats, caseFile: null, isSample, asker: {} });
   $("#landing").hidden = true;
   $("#report").hidden = false;
   $("#share-btn").hidden = true;
@@ -172,6 +181,7 @@ function renderInterrogateCard(errorMsg = "") {
     <h2>🚨 Send in the investigator</h2>
     <p>The stats below are free. Your investigator reads the messages and writes their speciality report, plus mugshots, ships &amp; beefs, the unsaid, awards and a fix-it plan.</p>
     <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span><span class="chip m">${DEPTHS[s.depth].emoji} ${DEPTHS[s.depth].label}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
+    ${state.isSample ? "" : askerHtml(state.stats.people, state.asker || {})}
     <p class="note">${esc(priceNote)}</p>
     ${errorMsg ? `<p class="note" style="color:#ffb3b9">⚠️ ${esc(errorMsg)}</p>` : ""}
   </div>
@@ -181,6 +191,9 @@ function renderInterrogateCard(errorMsg = "") {
   </div>
 </div>`;
   $("#go").addEventListener("click", () => startInterrogation());
+  const keep = () => { state.asker = readAsker(); };
+  $("#asker-me")?.addEventListener("change", keep);
+  $("#asker-note")?.addEventListener("input", keep);
   $("#change-opts").addEventListener("click", () => { goLanding(); document.getElementById("raid").scrollIntoView({ behavior: "smooth" }); });
 }
 
@@ -190,9 +203,19 @@ function buildJump() {
   $("#jump").innerHTML = ids.map(([id, t]) => `<a href="#${id}">${esc(short[id] || t)}</a>`).join("");
 }
 
+function backToCase() {
+  if (!state.chat) return;
+  $("#landing").hidden = true;
+  $("#report").hidden = false;
+  if (!state.caseFile) renderInterrogateCard();
+  caseBar.reset();
+  window.scrollTo({ top: 0 });
+}
+
 function goLanding() {
   $("#report").hidden = true;
   $("#landing").hidden = false;
+  $("#back-case").hidden = !state.chat;
   $("#price-text").innerHTML = priceLabel();
 }
 
@@ -211,6 +234,7 @@ async function startInterrogation(payment = null) {
   if (state.isSample) return runSample(s);
   const c = state.config;
   const promo = store.get("promo", "");
+  state.asker = readAsker();
   if (!promo && c.accessMode === "promo_only") return openModal("promo");
   if (!promo && c.accessMode === "paid" && !payment?.paymentId) return openModal("pay");
 
@@ -220,16 +244,25 @@ async function startInterrogation(payment = null) {
     setStep(0); await tick();
     const anon = s.anon ? makeNameMap(state.stats.people) : null;
     setStep(1); await tick();
-    const transcript = buildTranscript(state.chat, state.stats, { anon });
+    const transcript = buildTranscript(state.chat, state.stats, { anon, budget: DEPTH_BUDGET[s.depth] || 150_000 });
     const stats = statsForAi(state.stats, anon ? anon.name : (n) => n);
+    const a = state.asker || {};
+    const asker = {
+      me: a.me ? (anon ? anon.name(a.me) : a.me) : "",
+      outsider: Boolean(a.outsider),
+      note: a.note ? (anon ? anon.text(scrub(a.note)) : scrub(a.note)) : "",
+    };
     setStep(2);
-    const res = await api("/api/analyze", { stats, transcript, persona: s.persona, spice: s.spice, depth: s.depth, promo: promo || undefined, payment: payment || undefined });
+    const res = await api("/api/analyze", { stats, transcript, persona: s.persona, spice: s.spice, depth: s.depth, asker, promo: promo || undefined, payment: payment || undefined });
     setStep(3); await sleep(400);
-    let cf = res.caseFile;
+    let cf = coerceCase(res.caseFile);
     if (anon) cf = restoreDeep(cf, anon.restore);
     if (typeof res.freeUsesLeft === "number") state.config.freeUsesLeft = res.freeUsesLeft;
     showCase(cf);
   } catch (err) {
+    if (!err?.status && err instanceof Error) console.error(err);
+    if (err?.code === "invalid_json") err = { message: "The case file came back garbled. Try again." };
+    else if (!err?.status && err instanceof Error && !/server|internet/i.test(err.message)) err = { message: "Something went wrong drawing the case file. Try again." };
     if (err.status === 402) openModal("pay", err.message);
     else if (err.status === 403) openModal("promo", err.message);
     else renderInterrogateCard(err.message);
@@ -245,14 +278,14 @@ async function runSample(s) {
   for (let i = 0; i < 3; i++) { setStep(i); await sleep(900); }
   state.busy = false;
   hideOverlay();
-  showCase(SAMPLE_CASE);
+  showCase(coerceCase(SAMPLE_CASE));
   if (s.persona !== DEFAULT_PERSONA || s.spice !== "spicy") toast("The sample is pre-written by Sherlock. Your own chats get the investigator you pick.", 4500);
 }
 
 function showCase(cf) {
   state.caseFile = cf;
   $("#interrogate-wrap").innerHTML = "";
-  $("#ai-sections").innerHTML = renderCase(cf, state.stats);
+  $("#ai-sections").innerHTML = renderCase(cf, state.stats, { chat: state.chat, me: state.isSample ? "" : state.asker?.me || "" });
   $("#stats-sections").innerHTML = renderStats(state.stats, cf);
   $("#share-btn").hidden = false;
   buildJump();
@@ -356,6 +389,7 @@ function bind() {
   window.addEventListener("drop", (e) => { e.preventDefault(); if (!$("#landing").hidden) handleFiles(e.dataTransfer.files); });
 
   $("#sample-btn").addEventListener("click", loadSample);
+  $("#back-case").addEventListener("click", backToCase);
   $("#promo-btn").addEventListener("click", () => openModal("promo"));
   $("#promo-apply").addEventListener("click", applyPromo);
   $("#promo-input").addEventListener("keydown", (e) => { if (e.key === "Enter") applyPromo(); });
@@ -382,9 +416,14 @@ function bind() {
 async function doShare() {
   if (!state.caseFile) return;
   toast("📸 Making your share card…");
-  const blob = await makeShareCard(state.caseFile, { blurNames: false });
-  const r = await shareOrDownload(blob);
-  if (r === "downloaded") toast("Saved the share card. Post it to your story!");
+  try {
+    const blob = await makeShareCard(state.caseFile, { blurNames: false });
+    const r = await shareOrDownload(blob);
+    if (r === "downloaded") toast("Saved the share card. Post it to your story!");
+  } catch (err) {
+    console.error(err);
+    toast("Couldn't make the share card on this device. Try the copy button instead.", 5000);
+  }
 }
 
 buildPersonas();

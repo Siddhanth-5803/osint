@@ -2,13 +2,16 @@
 // investigation asks Claude through the viewer's own Claude account
 // (the artifact `sample` capability), so there is no server and no key.
 import { parseFiles } from "../public/js/parser.js";
-import { computeStats, statsForAi, buildTranscript, makeNameMap, restoreDeep } from "../public/js/stats.js";
+import { computeStats, statsForAi, buildTranscript, makeNameMap, restoreDeep, scrub } from "../public/js/stats.js";
 import { renderCase, renderStats, roastText, esc } from "../public/js/report.js";
 import { makeShareCard } from "../public/js/share.js";
 import { SAMPLE_CHAT_TEXT, SAMPLE_CASE, SAMPLE_TITLE } from "../public/js/sample.js";
 import { initCaseBar } from "../public/js/casebar.js";
 import { DEPTHS, DEFAULT_DEPTH, DEPTH_BUDGET, DEPTH_HINT, TIER_DEPTH } from "../public/js/depth.js";
-import { buildSystemPrompt, buildUserMessage, CASE_SCHEMA } from "../server/prompt.js";
+import { buildSystemPrompt, buildUserMessage, buildAskerBlock } from "../server/prompt.js";
+import { CASE_SCHEMA } from "../public/js/schema.js";
+import { parseCaseJson, coerceCase } from "../public/js/casefile.js";
+import { askerHtml, readAsker } from "../public/js/asker.js";
 
 const $ = (s) => document.querySelector(s);
 const store = {
@@ -33,7 +36,7 @@ const LINES = {
 };
 
 // ai: "checking" until the viewer answers, then "ready" or "off"
-const state = { owner: false, unavailableDepths: new Set(), chat: null, stats: null, caseFile: null, isSample: false, busy: false, ai: "checking", aiOffReason: "", sample: null, downloads: null, ctl: null };
+const state = { asker: {}, owner: false, unavailableDepths: new Set(), chat: null, stats: null, caseFile: null, isSample: false, busy: false, ai: "checking", aiOffReason: "", sample: null, downloads: null, ctl: null };
 
 // ---------- helpers ----------
 function toast(msg, ms = 2800) {
@@ -117,7 +120,9 @@ async function readFiles(fileList) {
   for (const f of fileList) {
     if (/\.zip$/i.test(f.name) || f.type === "application/zip") {
       if (!window.JSZip) throw new Error("Couldn't load the zip reader. Unzip the file and drop the .txt instead.");
-      const zip = await window.JSZip.loadAsync(f);
+      let zip;
+      try { zip = await window.JSZip.loadAsync(f); }
+      catch { throw new Error("That zip file couldn't be opened. Export the chat again, or unzip it and drop the .txt inside."); }
       const entries = Object.values(zip.files).filter((e) => !e.dir && /\.(txt|json)$/i.test(e.name) && !/__MACOSX/.test(e.name));
       for (const e of entries) {
         let name = e.name.split("/").pop();
@@ -158,7 +163,7 @@ function loadSample() {
 
 // ---------- report ----------
 function openReport(chat, stats, isSample) {
-  Object.assign(state, { chat, stats, caseFile: null, isSample });
+  Object.assign(state, { chat, stats, caseFile: null, isSample, asker: {}, ranDepth: null });
   $("#landing").hidden = true;
   $("#report").hidden = false;
   $("#share-btn").hidden = true;
@@ -189,6 +194,7 @@ function renderInterrogateCard(errorMsg = "") {
     <h2>🚨 Send in the investigator</h2>
     <p>Your investigator reads the messages and writes their speciality report, plus mugshots, ships &amp; beefs, the unsaid, awards and a fix-it plan.</p>
     <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span><span class="chip m">${DEPTHS[s.depth].emoji} ${DEPTHS[s.depth].label}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
+    ${state.isSample ? "" : askerHtml(state.stats.people, state.asker)}
     <p class="note">${esc(note)}</p>
     ${errorMsg ? `<p class="note" style="color:#ffb3b9">⚠️ ${esc(errorMsg)}</p>` : ""}
   </div>
@@ -198,6 +204,10 @@ function renderInterrogateCard(errorMsg = "") {
   </div>
 </div>`;
   $("#go").addEventListener("click", () => startInvestigation());
+  // Keep what the viewer typed if the card is redrawn (for example after an error).
+  const keep = () => { state.asker = readAsker(); };
+  $("#asker-me")?.addEventListener("change", keep);
+  $("#asker-note")?.addEventListener("input", keep);
   $("#change-opts").addEventListener("click", () => { goLanding(); document.getElementById("raid").scrollIntoView({ behavior: "smooth" }); });
 }
 
@@ -207,45 +217,44 @@ function buildJump() {
   $("#jump").innerHTML = ids.map(([id, t]) => `<a href="#${id}">${esc(short[id] || t)}</a>`).join("");
 }
 
+function backToCase() {
+  if (!state.chat) return;
+  $("#landing").hidden = true;
+  $("#report").hidden = false;
+  if (!state.caseFile) renderInterrogateCard();
+  caseBar.reset();
+  window.scrollTo({ top: 0 });
+}
+
 function goLanding() {
   $("#report").hidden = true;
   $("#landing").hidden = false;
+  $("#back-case").hidden = !state.chat;
 }
 
 // ---------- the investigation ----------
 const MAX_BYTES = 240_000;
 const bytes = (s) => new TextEncoder().encode(s).length;
 
-function buildPrompt(s, anon, budget) {
+function buildPrompt(s, anon, budget, asker) {
   const transcript = buildTranscript(state.chat, state.stats, { anon, budget });
   const stats = statsForAi(state.stats, anon ? anon.name : (n) => n);
+  const askerBlock = buildAskerBlock({
+    me: asker.me ? (anon ? anon.name(asker.me) : asker.me) : "",
+    outsider: asker.outsider,
+    note: asker.note ? (anon ? anon.text(scrub(asker.note)) : scrub(asker.note)) : "",
+  });
   return `${buildSystemPrompt({ persona: s.persona, spice: s.spice })}
 
 ${DEPTH_HINT[s.depth]}
+
+${askerBlock}
 
 FORMAT
 Reply with only one JSON object, no other text, matching this JSON Schema exactly (every property is required):
 ${JSON.stringify(CASE_SCHEMA)}
 
 ${buildUserMessage({ stats, transcript })}`;
-}
-
-// Reads the reply as JSON: the whole text, else a fenced block, else the outermost braces.
-function parseJson(text) {
-  const tries = [text, (text.match(/```(?:json)?\s*([\s\S]*?)```/) || [])[1], text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)];
-  for (const t of tries) {
-    if (!t) continue;
-    try { return JSON.parse(t); } catch { /* try the next shape */ }
-  }
-  throw { code: "invalid_json" };
-}
-
-function normalise(cf) {
-  if (!cf || typeof cf !== "object" || !Array.isArray(cf.suspects)) throw { code: "invalid_json" };
-  for (const k of ["pairs", "unsaid", "awards", "exhibits", "timeline", "fix_it", "share_lines"]) if (!Array.isArray(cf[k])) cf[k] = [];
-  if (!cf.relationship_mix || typeof cf.relationship_mix !== "object") cf.relationship_mix = {};
-  for (const k of ["case_title", "classification", "one_liner", "raid_summary", "final_verdict"]) cf[k] = String(cf[k] ?? "");
-  return cf;
 }
 
 const ERROR_COPY = {
@@ -256,6 +265,7 @@ const ERROR_COPY = {
   empty_completion: "Claude returned an empty case file. Try again, or try a smaller chat.",
   prompt_too_large: "This chat is too big to send. Try exporting a shorter period.",
   upstream_error: "The connection to Claude dropped. Try again.",
+  render_error: "Something went wrong drawing the case file. Try again, or pick a lighter depth.",
 };
 
 async function startInvestigation() {
@@ -271,8 +281,10 @@ async function startInvestigation() {
     setStep(0); await tick();
     const anon = s.anon ? makeNameMap(state.stats.people) : null;
     if (s.depth === "secret" && !state.owner) s.depth = "deep";
-    let budget = DEPTH_BUDGET[s.depth], prompt = buildPrompt(s, anon, budget);
-    while (bytes(prompt) > MAX_BYTES && budget > 20_000) { budget = Math.floor(budget * 0.75); prompt = buildPrompt(s, anon, budget); }
+    const asker = readAsker();
+    state.asker = asker;
+    let budget = DEPTH_BUDGET[s.depth], prompt = buildPrompt(s, anon, budget, asker);
+    while (bytes(prompt) > MAX_BYTES && budget > 20_000) { budget = Math.floor(budget * 0.75); prompt = buildPrompt(s, anon, budget, asker); }
     setStep(1);
     let started = false;
     const want = DEPTHS[s.depth];
@@ -286,7 +298,8 @@ async function startInvestigation() {
         $("#ov-progress").textContent = `${text.length.toLocaleString()} characters of evidence written…`;
       },
     });
-    let cf = normalise(parseJson(res.text));
+    let cf = coerceCase(parseCaseJson(res?.text));
+    if (res?.truncated) toast("The case file was cut short, so a few sections may be missing. A lighter depth gives a complete one.", 6000);
     // Tell the viewer which depth actually ran (their plan may have used a lighter model).
     const ranDepth = res.modelApplied === want.model ? s.depth : (TIER_DEPTH[res.modelTierApplied] || s.depth);
     state.ranDepth = ranDepth;
@@ -296,7 +309,8 @@ async function startInvestigation() {
     if (anon) cf = restoreDeep(cf, anon.restore);
     showCase(cf);
   } catch (e) {
-    const code = e?.code || "upstream_error";
+    if (e instanceof Error) console.error(e);
+    const code = e instanceof Error ? "render_error" : e?.code || "upstream_error";
     if (code === "cancelled") renderInterrogateCard();
     else if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"].includes(code)) {
       state.ai = "off"; state.aiOffReason = code === "not_granted" ? "declined" : "unavailable";
@@ -315,7 +329,7 @@ async function runSample(s) {
   for (let i = 0; i < 3; i++) { setStep(i); await sleep(800); }
   state.busy = false;
   hideOverlay();
-  showCase(SAMPLE_CASE);
+  showCase(coerceCase(SAMPLE_CASE));
   if (s.persona !== DEFAULT_PERSONA || s.spice !== "spicy") toast("The sample is pre-written by Sherlock. Your own chats get the investigator you pick.", 4500);
 }
 
@@ -324,7 +338,7 @@ function showCase(cf) {
   const d = state.isSample ? null : DEPTHS[state.ranDepth];
   if (d) $("#case-meta").textContent = `${state.stats.totalMessages.toLocaleString()} messages · ${state.stats.people.length} suspects · ${d.emoji} ${d.label}`;
   $("#interrogate-wrap").innerHTML = "";
-  $("#ai-sections").innerHTML = renderCase(cf, state.stats);
+  $("#ai-sections").innerHTML = renderCase(cf, state.stats, { chat: state.chat, me: state.isSample ? "" : state.asker.me });
   $("#stats-sections").innerHTML = renderStats(state.stats, cf);
   $("#share-btn").hidden = false;
   buildJump();
@@ -353,7 +367,14 @@ function hideOverlay() { $("#overlay").hidden = true; clearInterval(lineTimer); 
 // ---------- share card ----------
 async function doShare() {
   if (!state.caseFile) return;
-  const blob = await makeShareCard(state.caseFile, { blurNames: false });
+  let blob;
+  try {
+    blob = await makeShareCard(state.caseFile, { blurNames: false });
+  } catch (err) {
+    console.error(err);
+    toast("Couldn't draw the share card on this device. Try the copy button instead.", 5000);
+    return;
+  }
   if (state.downloads) {
     try {
       await state.downloads.save({ filename: "fbi-open-up-case.png", data: blob });
@@ -361,12 +382,18 @@ async function doShare() {
       return;
     } catch (e) {
       if (e?.code === "declined") return;
+      if (e?.code === "rate_limited") { toast("A save is already waiting for you. Finish that one first."); return; }
     }
   }
   // Fallback: show the card so the viewer can long-press or right-click to save it.
-  const url = URL.createObjectURL(blob);
-  $("#card-img").src = url;
+  closeCard();
+  state.cardUrl = URL.createObjectURL(blob);
+  $("#card-img").src = state.cardUrl;
   $("#card-modal").hidden = false;
+}
+function closeCard() {
+  $("#card-modal").hidden = true;
+  if (state.cardUrl) { URL.revokeObjectURL(state.cardUrl); state.cardUrl = null; }
 }
 
 // ---------- events ----------
@@ -381,10 +408,13 @@ function bind() {
   window.addEventListener("drop", (e) => { e.preventDefault(); if (!$("#landing").hidden) handleFiles(e.dataTransfer.files); });
 
   $("#sample-btn").addEventListener("click", loadSample);
+  $("#back-case").addEventListener("click", backToCase);
   $("#new-raid").addEventListener("click", () => { goLanding(); window.scrollTo({ top: 0 }); });
   $("#share-btn").addEventListener("click", doShare);
   $("#ov-stop").addEventListener("click", () => state.ctl?.abort());
-  $("#card-close").addEventListener("click", () => { $("#card-modal").hidden = true; });
+  $("#card-close").addEventListener("click", closeCard);
+  $("#card-modal").addEventListener("click", (e) => { if (e.target.id === "card-modal") closeCard(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#card-modal").hidden) closeCard(); });
 
   $("#report").addEventListener("click", async (e) => {
     const tr = e.target.closest(".translate, .redact");

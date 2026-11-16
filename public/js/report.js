@@ -14,19 +14,114 @@ const section = (id, label, title, sub, body) => `
   ${body}
 </section>`;
 
+// Runs one section's renderer; if it throws, that section is skipped instead of breaking the page.
+function safe(name, fn) {
+  try {
+    return fn() || "";
+  } catch (err) {
+    console.error(`Could not draw the ${name} section`, err);
+    return "";
+  }
+}
+
+const sameText = (a, b) => String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+const clip = (t, n = 420) => (t.length > n ? t.slice(0, n - 1) + "…" : t);
+function msgBody(m) {
+  if (m.type === "media") return "📷 (photo, sticker or video)";
+  if (m.type === "deleted") return "🗑️ This message was deleted";
+  return clip(m.text || "");
+}
+function when(ts) {
+  try {
+    return new Date(ts).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+
+// Receipts: the person's real messages (looked up in the chat by id) and the replies they got.
+function receiptsHtml(list, chat) {
+  if (!chat?.messages?.length || !Array.isArray(list) || !list.length) return "";
+  const msgs = chat.messages;
+  const byId = (id) => {
+    const n = parseInt(String(id ?? "").replace(/[^\d]/g, ""), 10);
+    const m = Number.isFinite(n) ? msgs[n - 1] : null;
+    return m && m.i === n && m.author ? m : null;
+  };
+  const nextReply = (m) => {
+    for (let k = m.i; k < Math.min(msgs.length, m.i + 40); k++) {
+      const r = msgs[k];
+      if (r.ts - m.ts > 12 * 3600e3) break;
+      if (r.author && r.author !== m.author && r.type !== "system" && r.type !== "call") return r;
+    }
+    return null;
+  };
+  const seen = new Set();
+  const items = list.map((r) => {
+    const m = byId(r.msg_id);
+    if (!m || seen.has(m.i)) return "";
+    seen.add(m.i);
+    let reply = byId(r.reply_id);
+    let replyTr = r.reply_translation;
+    if (!reply || reply.author === m.author || reply.i <= m.i) { reply = nextReply(m); replyTr = ""; }
+    const body = msgBody(m);
+    const tr = m.type === "text" && r.translation && !sameText(r.translation, m.text) ? `<p class="r-tr"><span class="r-en">English</span> ${esc(r.translation)}</p>` : "";
+    let replyHtml = "";
+    if (reply) {
+      const rb = msgBody(reply);
+      const rtr = reply.type === "text" && replyTr && !sameText(replyTr, reply.text) ? `<p class="r-tr"><span class="r-en">English</span> ${esc(replyTr)}</p>` : "";
+      replyHtml = `<div class="r-reply"><span class="r-meta">↳ ${esc(reply.author)} replied${reply.ts - m.ts > 60e3 ? ` · ${esc(humanDuration(reply.ts - m.ts))} later` : ""}</span><p class="r-text">${esc(rb)}</p>${rtr}</div>`;
+    }
+    return `<div class="rcpt">
+  <div class="r-msg"><span class="r-meta">#${m.i} · ${esc(when(m.ts))} · ${esc(m.author)}</span><p class="r-text">${esc(body)}</p>${tr}</div>
+  ${replyHtml}
+  ${r.note ? `<p class="r-note">${esc(r.note)}</p>` : ""}
+</div>`;
+  }).filter(Boolean).join("");
+  return items ? `<div class="receipts"><span class="label">🧾 Receipts</span>${items}</div>` : "";
+}
+
+// When Claude gives no usable receipts, pick two telling messages locally:
+// longer messages that got a quick reply, spread out over the chat.
+function autoReceipts(name, chat) {
+  if (!chat?.messages?.length || !name) return [];
+  const msgs = chat.messages;
+  const mine = msgs.filter((m) => m.author === name && m.type === "text" && m.text.trim().split(/\s+/).length >= 3);
+  if (!mine.length) return [];
+  const scored = mine.map((m) => {
+    let reply = null;
+    for (let k = m.i; k < Math.min(msgs.length, m.i + 15); k++) {
+      const r = msgs[k];
+      if (r.author && r.author !== m.author && r.type !== "system" && r.type !== "call") { reply = r; break; }
+    }
+    const quick = reply && reply.ts - m.ts < 5 * 60e3 ? 40 : 0;
+    const asks = /\?/.test(m.text) ? 10 : 0;
+    return { m, reply, score: Math.min(m.text.length, 160) + quick + asks };
+  }).sort((a, b) => b.score - a.score);
+  const picked = [];
+  for (const c of scored) {
+    if (picked.every((p) => Math.abs(p.m.i - c.m.i) > 50)) picked.push(c);
+    if (picked.length === 2) break;
+  }
+  return picked.map((c) => ({ msg_id: `#${c.m.i}`, translation: "", reply_id: c.reply ? `#${c.reply.i}` : "", reply_translation: "", note: "" }));
+}
+
 // ---------------- AI case file ----------------
-export function renderCase(cf, stats) {
+// opts.chat: the parsed chat (for receipts). opts.me: the uploader's name, to mark their mugshot.
+export function renderCase(cf, stats, opts = {}) {
+  const { chat = null, me = "" } = opts;
   const people = new Map(stats.people.map((p, i) => [p.name.toLowerCase(), { ...p, idx: i }]));
   const findP = (n) => people.get(String(n || "").toLowerCase());
   const parts = [];
 
+  parts.push(safe("verdict", () => {
   const mix = cf.relationship_mix || {};
   const mixRows = [["friends", "Friends", "#45d9a6"], ["crush", "Crush", "#ff8fc7"], ["lovers", "Lovers", "#ff4e5b"], ["situationship", "Situationship", "#a998ff"], ["rivalry", "Rivalry", "#ff9f45"], ["family", "Family", "#ffd23f"], ["work", "Work", "#7fc8ff"]]
     .filter(([k]) => (mix[k] || 0) > 0)
     .sort((a, b) => (mix[b[0]] || 0) - (mix[a[0]] || 0))
     .map(([k, l, c]) => `<div class="r"><span>${l}</span><div class="bar"><i style="width:${clamp(mix[k])}%;background:${c}"></i></div><span>${clamp(mix[k])}%</span></div>`).join("");
 
-  parts.push(`
+  return `
 <section class="section" id="verdict">
   <div class="card verdict">
     <div>
@@ -45,8 +140,10 @@ export function renderCase(cf, stats) {
       <div class="gauge"><div class="top"><span>🧪 What this chat really is</span></div><div class="mix" style="margin-top:10px">${mixRows}</div><small style="margin-top:10px">${esc(cf.group_purpose)}</small></div>
     </div>
   </div>
-</section>`);
+</section>`;
+  }));
 
+  parts.push(safe("speciality", () => {
   const fr = cf.focus_report;
   if (fr && Array.isArray(fr.items) && fr.items.length) {
     const files = fr.items.map((it, i) => `
@@ -55,26 +152,29 @@ export function renderCase(cf, stats) {
   <h3>${esc(it.title)}</h3>
   <p>${esc(it.body)}</p>
   <p class="fverdict">⚖️ ${esc(it.verdict)}</p>
-  ${(it.evidence || []).length ? `<small class="mono muted">Evidence: ${esc(it.evidence.join(", "))}</small>` : ""}
+  ${[].concat(it.evidence || []).length ? `<small class="mono muted">Evidence: ${esc([].concat(it.evidence).join(", "))}</small>` : ""}
 </article>`).join("");
-    parts.push(section("focus", "Speciality report", esc(fr.title || "The investigator's report"), esc(fr.intro || ""), `<div class="files">${files}</div>`));
+    return section("focus", "Speciality report", esc(fr.title || "The investigator's report"), esc(fr.intro || ""), `<div class="files">${files}</div>`);
   }
+  }));
 
-  const mugs = (cf.suspects || []).map((s, i) => {
+  parts.push(safe("mugshots", () => {
+  const mugs = (cf.suspects || []).map((s, i) => safe(`mugshot ${i + 1}`, () => {
     const p = findP(s.name);
+    const isMe = me && String(s.name).toLowerCase() === String(me).toLowerCase();
     const color = colorFor(p ? p.idx : i);
     const t = s.traits || {};
     const traitRow = (k, label) => `<div class="trait"><span>${label}</span><div class="bar"><i style="width:${clamp(t[k])}%"></i></div><span>${clamp(t[k])}</span></div>`;
     const chips = p ? `<div class="statchips"><span>${pct(p.share)} of msgs</span><span>reply ${humanDuration(p.medianReply)}</span><span>${p.starts} convo starts</span>${p.deleted ? `<span>${p.deleted} deleted</span>` : ""}</div>` : "";
     return `
-<article class="mug">
+<article class="mug${isMe ? " me" : ""}">
   <div class="mug-top">
     <div class="avatar" style="background:${color}">${esc(s.role_emoji || initials(s.name))}</div>
-    <div class="placard"><b>${esc(s.name)}</b><span>SUSPECT #${String(i + 1).padStart(3, "0")} · ${esc(s.confidence || "")} confidence</span></div>
+    <div class="placard"><b>${esc(s.name)}${isMe ? ' <em class="you-badge">📍 YOU</em>' : ""}</b><span>SUSPECT #${String(i + 1).padStart(3, "0")} · ${esc(s.confidence || "")} confidence</span></div>
   </div>
   <div class="mug-body">
     <div><div class="role">${esc(s.role)}</div><p class="caption">${esc(s.mugshot_caption)}</p></div>
-    <div class="charges">${(s.charges || []).map((c) => `<span>⚖️ ${esc(c)}</span>`).join("")}</div>
+    <div class="charges">${[].concat(s.charges || []).map((c) => `<span>⚖️ ${esc(c)}</span>`).join("")}</div>
     <button class="translate" type="button" aria-expanded="false">
       <span class="said"><small>What they type</small>“${esc(s.what_they_type)}”</span>
       <span class="hint">tap to translate 🔍</span>
@@ -87,11 +187,14 @@ export function renderCase(cf, stats) {
     <div class="kv"><small>Texting style</small><p>${esc(s.texting_style)}</p></div>
     <div class="traits">${traitRow("chaos", "Chaos")}${traitRow("loyalty", "Loyalty")}${traitRow("drama", "Drama")}${traitRow("braincells", "Braincells")}${traitRow("rizz", "Rizz")}</div>
     ${chips}
+    ${receiptsHtml(s.receipts, chat) || receiptsHtml(autoReceipts(p?.name || s.name, chat), chat).replace("🧾 Receipts", "🧾 Receipts <small>(picked by the page)</small>")}
   </div>
 </article>`;
-  }).join("");
-  parts.push(section("suspects", "The lineup", "Mugshots", "Everyone's real role in this chat, whether they admit it or not.", `<div class="mugs">${mugs}</div>`));
+  })).join("");
+  return mugs ? section("suspects", "The lineup", "Mugshots", "Everyone's real role in this chat, with receipts.", `<div class="mugs">${mugs}</div>`) : "";
+  }));
 
+  parts.push(safe("ships", () => {
   const TYPE = { besties: ["👯", "#45d9a6"], crush: ["💘", "#ff8fc7"], couple: ["💑", "#ff4e5b"], situationship: ["🌀", "#a998ff"], rivals: ["⚔️", "#ff9f45"], frenemies: ["🙃", "#ffd23f"], siblings_energy: ["👊", "#7fc8ff"], hype_duo: ["📣", "#b6e36b"], parent_child: ["🧸", "#f7a6ff"], work_spouse: ["💼", "#5ad1e0"], strangers: ["🧍", "#e4f4ff"] };
   const pairs = (cf.pairs || []).map((p) => {
     const [emo, col] = TYPE[p.type] || ["🔗", "#e4f4ff"];
@@ -107,24 +210,34 @@ export function renderCase(cf, stats) {
   <small class="mono">Puts in more effort: <b>${esc(p.who_invests_more)}</b> · <span class="conf ${esc(p.confidence)}">${esc(p.confidence)}</span></small>
 </div>`;
   }).join("");
-  if (pairs) parts.push(section("ships", "Ships & beefs", "Who's what to whom", "", `<div class="pairs">${pairs}</div>`));
+  return pairs ? section("ships", "Ships & beefs", "Who's what to whom", "", `<div class="pairs">${pairs}</div>`) : "";
+  }));
 
+  parts.push(safe("unsaid", () => {
   const unsaid = (cf.unsaid || []).map((u, i) => `
 <button class="redact" type="button" aria-expanded="false">
   <span class="top"><span class="label">Classified #${i + 1} · tap to declassify</span><span class="conf ${esc(u.confidence)}">${esc(u.confidence)}</span></span>
   <span class="txt">${esc(u.finding)}</span>
 </button>`).join("");
-  if (unsaid) parts.push(section("unsaid", "Top secret", "The unsaid", "Things everyone in this chat knows and nobody says.", `<div class="unsaid">${unsaid}</div>`));
+  return unsaid ? section("unsaid", "Top secret", "The unsaid", "Things everyone in this chat knows and nobody says.", `<div class="unsaid">${unsaid}</div>`) : "";
+  }));
 
+  parts.push(safe("awards", () => {
   const awards = (cf.awards || []).map((a) => `<div class="award"><b>${esc(a.emoji || "🏆")}</b><h3>${esc(a.title)}</h3><span class="w">${esc(a.winner)}</span><p>${esc(a.reason)}</p></div>`).join("");
-  if (awards) parts.push(section("awards", "Awards night", "And the award goes to…", "", `<div class="awards">${awards}</div>`));
+  return awards ? section("awards", "Awards night", "And the award goes to…", "", `<div class="awards">${awards}</div>`) : "";
+  }));
 
+  parts.push(safe("fix-it", () => {
   const fixes = (cf.fix_it || []).map((f, i) => `<div class="fix"><span class="n">${i + 1}</span><div><p class="p">${esc(f.problem)}</p><p>${esc(f.fix)}</p><small>For: ${esc(f.for_whom)}</small></div></div>`).join("");
-  if (fixes) parts.push(section("fixit", "Agent's recommendations", "The fix-it plan", "If you actually want things to get better, start here.", `<div class="fixes">${fixes}</div>`));
+  return fixes ? section("fixit", "Investigator's recommendations", "The fix-it plan", "If you actually want things to get better, start here.", `<div class="fixes">${fixes}</div>`) : "";
+  }));
 
-  const ex = (cf.exhibits || []).map((e, i) => `<div class="exhibit"><span class="tag">Exhibit ${String.fromCharCode(65 + i)} · ${esc(e.msg_id)} · ${esc(e.speaker)}</span><q>${esc(e.quote)}</q><p>${esc(e.why)}</p></div>`).join("");
+  parts.push(safe("evidence", () => {
+  const ex = (cf.exhibits || []).map((e, i) => `<div class="exhibit"><span class="tag">Exhibit ${i < 26 ? String.fromCharCode(65 + i) : i + 1} · ${esc(e.msg_id)} · ${esc(e.speaker)}</span><q>${esc(e.quote)}</q><p>${esc(e.why)}</p></div>`).join("");
   const tl = (cf.timeline || []).map((t) => `<div class="tl"><small>${esc(t.date)}</small><b>${esc(t.title)}</b><p>${esc(t.what_happened)}</p></div>`).join("");
-  parts.push(section("evidence", "Evidence locker", "Exhibits & timeline", "", `<div class="two-col"><div class="stack">${ex}</div><div class="card"><div class="timeline">${tl}</div></div></div>`));
+  if (!ex && !tl) return "";
+  return section("evidence", "Evidence locker", "Exhibits & timeline", "", `<div class="two-col"><div class="stack">${ex}</div>${tl ? `<div class="card"><div class="timeline">${tl}</div></div>` : ""}</div>`);
+  }));
 
   parts.push(`
 <section class="section" id="final">
@@ -140,6 +253,10 @@ export function renderCase(cf, stats) {
 
 // ---------------- Free stats ----------------
 export function renderStats(stats, cf = null) {
+  return safe("stats", () => renderStatsInner(stats, cf)) || `<section class="section"><p class="callout">Couldn't draw the stats for this chat.</p></section>`;
+}
+
+function renderStatsInner(stats, cf) {
   const parts = [];
   const maxShare = Math.max(...stats.people.map((p) => p.share), 0.01);
   const lineup = stats.people.slice(0, 15).map((p, i) => `

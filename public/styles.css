@@ -407,3 +407,22 @@ td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 .secret-depth label small { font-family: var(--f-mono); font-size: .7rem; background: var(--tape); border: 2px solid var(--navy); border-radius: 6px; padding: 0 6px; }
 .secret-depth input:checked + label { background: var(--navy); color: #fff; border-style: solid; }
 .secret-depth input:focus-visible + label { outline: 3px solid var(--blue); outline-offset: 2px; }
+
+/* receipts under each mugshot */
+.receipts { display: grid; gap: 10px; border-top: 2px dashed var(--navy); padding-top: 12px; }
+.rcpt { display: grid; gap: 6px; background: var(--sky-2); border: 2px solid var(--navy); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+.r-meta { display: block; font-family: var(--f-mono); font-size: .72rem; color: var(--navy-soft); }
+.r-text { font-weight: 600; overflow-wrap: anywhere; white-space: pre-wrap; }
+.r-tr { font-size: .9rem; color: var(--navy-soft); overflow-wrap: anywhere; }
+.r-reply { margin-left: 12px; padding-left: 10px; border-left: 3px solid var(--pink); display: grid; gap: 2px; }
+.r-note { font-size: .85rem; font-style: italic; }
+.mug.me { outline: 4px solid var(--blue); outline-offset: 3px; }
+.you-badge { font-style: normal; font-family: var(--f-mono); font-size: .7rem; background: var(--tape); color: var(--navy); border-radius: 6px; padding: 1px 6px; vertical-align: middle; }
+
+/* who's asking (interrogation card) */
+.asker { display: grid; gap: 10px; margin-top: 14px; }
+.asker label { display: grid; gap: 4px; font-weight: 600; font-size: .92rem; color: #fff; }
+.asker select, .asker textarea { font: inherit; color: var(--navy); background: var(--cloud); border: 2px solid var(--navy); border-radius: 10px; padding: 8px 10px; width: 100%; }
+.asker textarea { min-height: 70px; resize: vertical; }
+.asker small { color: #c9d4f5; font-weight: 400; }
+.r-en { font-family: var(--f-mono); font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; background: var(--mint); color: var(--navy); border: 1.5px solid var(--navy); border-radius: 5px; padding: 0 5px; margin-right: 4px; vertical-align: 1px; }

@@ -87,7 +87,12 @@ async function handleApi(req, res, url) {
 
   if (req.method === "POST" && url.pathname === "/api/analyze") {
     const body = await readJson(req);
-    const { stats, transcript, persona = "sherlock", spice = "spicy", depth = "standard", promo, payment } = body;
+    const { stats, transcript, persona = "sherlock", spice = "spicy", depth = "standard", asker: rawAsker, promo, payment } = body;
+    const asker = {
+      me: typeof rawAsker?.me === "string" ? rawAsker.me.slice(0, 120) : "",
+      outsider: rawAsker?.outsider === true,
+      note: typeof rawAsker?.note === "string" ? rawAsker.note.slice(0, 600) : "",
+    };
     if (!stats || typeof stats !== "object" || typeof transcript !== "string" || transcript.length < 20) {
       return send(res, 400, { error: "No chat found in the request." });
     }
@@ -101,7 +106,7 @@ async function handleApi(req, res, url) {
     const access = checkAccess({ ip, promo, payment });
     if (!access.ok) return send(res, access.status, { error: access.reason, needs: config.accessMode });
 
-    const result = await analyzeChat({ stats, transcript, persona, spice, depth });
+    const result = await analyzeChat({ stats, transcript, persona, spice, depth, asker });
     if (access.kind === "free") recordFreeUse(ip);
     if (access.kind === "paid") markOrderUsed(payment.orderId);
     console.log(`[raid] ${new Date().toISOString()} kind=${access.kind} model=${result.model} in=${result.usage?.input_tokens ?? "-"} out=${result.usage?.output_tokens ?? "-"}`);

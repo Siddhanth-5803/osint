@@ -64,6 +64,11 @@ export function parseWhatsApp(raw, title = "WhatsApp chat") {
       continue;
     }
     const author = am[1].replace(/^~\s*/, "").trim();
+    // Android system lines like "Meera changed the subject from ..." or "Kabir added Zoya" have no real author.
+    if (/\b(changed|added|removed|left|joined|created|pinned|turned|deleted|reset|blocked|unblocked)\b/i.test(author) && author.split(/\s+/).length >= 3) {
+      messages.push({ ts, author: null, text: rest.trim(), type: "system" });
+      continue;
+    }
     let text = am[2].replace(EDITED_RE, "").trim();
     if (CAPTION_MEDIA_RE.test(text) && !MEDIA_RE.test(text)) text = text.replace(CAPTION_MEDIA_RE, "").trim();
     let type = "text";

@@ -13,16 +13,28 @@ function wrap(ctx, text, maxWidth) {
   return lines;
 }
 
+// Rounded rectangle path that also works on browsers without ctx.roundRect (older iPads and iPhones).
+function rrect(ctx, x, y, w, h, r) {
+  if (typeof ctx.roundRect === "function") return ctx.roundRect(x, y, w, h, r);
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
 function box(ctx, x, y, w, h, r, fill, shadow = 14) {
   ctx.fillStyle = NAVY;
-  ctx.beginPath(); ctx.roundRect(x + shadow, y + shadow, w, h, r); ctx.fill();
+  ctx.beginPath(); rrect(ctx, x + shadow, y + shadow, w, h, r); ctx.fill();
   ctx.fillStyle = fill;
-  ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill();
+  ctx.beginPath(); rrect(ctx, x, y, w, h, r); ctx.fill();
   ctx.lineWidth = 7; ctx.strokeStyle = NAVY; ctx.stroke();
 }
 
 export async function makeShareCard(cf, { blurNames = false } = {}) {
-  await document.fonts?.ready;
+  try { await document.fonts?.ready; } catch { /* draw with fallback fonts */ }
   const c = document.createElement("canvas");
   c.width = 1080; c.height = 1920;
   const ctx = c.getContext("2d");
@@ -77,8 +89,8 @@ export async function makeShareCard(cf, { blurNames = false } = {}) {
   const meter = (label, val, color, yy) => {
     ctx.font = "700 40px 'Outfit', sans-serif"; ctx.fillStyle = NAVY; ctx.fillText(label, 80, yy);
     ctx.font = "700 40px 'Space Mono', monospace"; ctx.textAlign = "right"; ctx.fillText(`${val}%`, 1000, yy); ctx.textAlign = "left";
-    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.roundRect(80, yy + 60, 920, 46, 23); ctx.fill(); ctx.lineWidth = 6; ctx.strokeStyle = NAVY; ctx.stroke();
-    ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(83, yy + 63, Math.max(30, 914 * val / 100), 40, 20); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.beginPath(); rrect(ctx, 80, yy + 60, 920, 46, 23); ctx.fill(); ctx.lineWidth = 6; ctx.strokeStyle = NAVY; ctx.stroke();
+    ctx.fillStyle = color; ctx.beginPath(); rrect(ctx, 83, yy + 63, Math.max(30, 914 * val / 100), 40, 20); ctx.fill();
   };
   meter("🌪️ Chaos level", Math.round(cf.chaos_level || 0), RED, y);
   meter("🛟 Survival odds", Math.round(cf.survival_odds || 0), "#45d9a6", y + 150);
@@ -98,7 +110,7 @@ export async function makeShareCard(cf, { blurNames = false } = {}) {
   box(ctx, 80, 1740, 920, 110, 26, PINK, 10);
   ctx.fillStyle = NAVY; ctx.font = "800 44px 'Bricolage Grotesque', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText("Get your group chat raided 🚨", 540, 1797);
-  return new Promise((res) => c.toBlob(res, "image/png"));
+  return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("Couldn't draw the share card."))), "image/png"));
 }
 
 export async function shareOrDownload(blob, filename = "fbi-open-up.png") {
