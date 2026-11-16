@@ -74,6 +74,8 @@ async function loadConfig() {
   try { state.config = await api("/api/config"); }
   catch { state.config = { accessMode: "free", priceInr: 5, aiReady: false, offline: true, razorpayEnabled: false }; }
   $("#price-text").innerHTML = priceLabel();
+  const secret = document.getElementById("dp-x");
+  if (secret) secret.disabled = true;
   const allowed = state.config.depths;
   if (Array.isArray(allowed) && allowed.length) {
     document.querySelectorAll('input[name="depth"]').forEach((el) => { el.disabled = !allowed.includes(el.value); });

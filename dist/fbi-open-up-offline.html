@@ -126,7 +126,7 @@ a { color: var(--blue); font-weight: 600; }
 
 .opts { display: grid; gap: 16px; }
 .opt-title { font-weight: 700; margin-bottom: 8px; display: block; }
-.personas { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.personas { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 8px; }
 .persona { position: relative; }
 .persona input { position: absolute; opacity: 0; pointer-events: none; }
 .persona label { display: grid; gap: 2px; border: 2px solid var(--navy); border-radius: 12px; padding: 10px; cursor: pointer; background: var(--cloud); height: 100%; transition: transform .12s; }
@@ -373,12 +373,29 @@ td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 
 .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 70; background: var(--navy); color: #fff; padding: 10px 16px; border-radius: 12px; font-weight: 600; max-width: calc(100% - 32px); box-shadow: 4px 4px 0 var(--red); }
 
-@media (max-width: 860px) {
-  .hero, .raid, .verdict, .two-col { grid-template-columns: 1fr; }
+/* Tablets (iPad portrait and up) keep side-by-side layouts; phones stack. */
+@media (max-width: 1000px) {
+  .hero { grid-template-columns: 1.2fr .8fr; gap: 20px; }
   .door-scene { max-width: 300px; }
-  .mugs, .pairs, .privacy, .files { grid-template-columns: 1fr; }
   .features { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 760px) {
+  .verdict, .two-col { grid-template-columns: 1fr; }
   .interrogate { grid-template-columns: 1fr; }
+}
+@media (max-width: 700px) {
+  .hero, .raid { grid-template-columns: 1fr; }
+  .mugs, .pairs, .privacy, .files { grid-template-columns: 1fr; }
+}
+/* Big screens: use the space instead of a narrow strip. */
+@media (min-width: 1400px) {
+  .wrap { max-width: 1280px; }
+  body { font-size: 18px; }
+  .mugs, .pairs, .files { grid-template-columns: repeat(3, 1fr); }
+  .features { grid-template-columns: repeat(3, 1fr); }
+}
+@media (min-width: 1900px) {
+  .wrap { max-width: 1480px; }
 }
 @media (max-width: 520px) {
   body { font-size: 16px; }
@@ -396,6 +413,12 @@ td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 .seg-3 label { text-align: center; padding: 8px 6px; font-size: .9rem; line-height: 1.25; }
 .seg-3 label:last-of-type { border-right: 0; }
 .row-opts > div:has(.seg-3) { flex: 1 1 100%; }
+.secret-depth { margin-top: -6px; }
+.secret-depth input { position: absolute; opacity: 0; pointer-events: none; }
+.secret-depth label { display: flex; align-items: center; justify-content: center; gap: 8px; border: 2px dashed var(--navy); border-radius: 12px; padding: 8px 12px; font-weight: 700; cursor: pointer; background: var(--cloud); }
+.secret-depth label small { font-family: var(--f-mono); font-size: .7rem; background: var(--tape); border: 2px solid var(--navy); border-radius: 6px; padding: 0 6px; }
+.secret-depth input:checked + label { background: var(--navy); color: #fff; border-style: solid; }
+.secret-depth input:focus-visible + label { outline: 3px solid var(--blue); outline-offset: 2px; }
 
 /* one-click version: the platform already pads the page for phone notches */
 body { padding-top: 0; padding-bottom: 0; }
@@ -477,6 +500,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
               <input type="radio" name="depth" id="dp-d" value="deep"><label for="dp-d">🧬 Full Forensics</label>
             </div>
           </div>
+        </div>
+        <div class="secret-depth" id="secret-depth" hidden>
+          <input type="radio" name="depth" id="dp-x" value="secret" disabled><label for="dp-x">🗝️ Top Secret <small>owner only</small></label>
         </div>
         <p class="depth-note" id="depth-note">Balanced. Sharp roasts, good speed.</p>
         <label class="toggle"><input type="checkbox" id="anon" checked> Hide real names from the AI (they come back in your report)</label>
@@ -1792,10 +1818,21 @@ const DEPTHS = {
   quick: { emoji: "🔍", label: "Quick Peek", model: "claude-haiku-5-5", tier: "quick", desc: "Fastest. A lighter read of the chat." },
   standard: { emoji: "🕵️", label: "Stakeout", model: "claude-sonnet-5-5", tier: "default", desc: "Balanced. Sharp roasts, good speed." },
   deep: { emoji: "🧬", label: "Full Forensics", model: "claude-opus-5-5", tier: "complex", desc: "Deepest analysis. Slowest, can take a couple of minutes." },
+  secret: { emoji: "🗝️", label: "Top Secret", model: "claude-opus-5-5", tier: "complex", effort: "high", ownerOnly: true, desc: "Owner only. Opus at full effort reads the most messages and digs the deepest. Can take a few minutes." },
 };
+// How much of the chat each depth reads (characters) and how much it writes.
+const DEPTH_BUDGET = { quick: 90_000, standard: 150_000, deep: 150_000, secret: 210_000 };
+const DEPTH_HINT = {
+  quick: "INVESTIGATION DEPTH: QUICK. Keep every list to the minimum count allowed and every text short.",
+  standard: "INVESTIGATION DEPTH: STANDARD. Use the middle of every allowed range.",
+  deep: "INVESTIGATION DEPTH: DEEP. Use the top of every allowed range and be as specific as the evidence allows.",
+  secret: "INVESTIGATION DEPTH: TOP SECRET. Be exhaustive. Use the maximum of every allowed range, cite the most evidence, and look for patterns across the whole timeline.",
+};
+// Which depth a model tier corresponds to, for telling the viewer what actually ran.
+const TIER_DEPTH = { quick: "quick", default: "standard", complex: "deep" };
 const DEFAULT_DEPTH = "standard";
 
-return { DEPTHS, DEFAULT_DEPTH };
+return { DEPTHS, DEPTH_BUDGET, DEPTH_HINT, TIER_DEPTH, DEFAULT_DEPTH };
 })();
 
 const __m8_prompt = (() => {
@@ -1996,7 +2033,7 @@ const { renderCase, renderStats, roastText, esc } = __m3_report;
 const { makeShareCard } = __m4_share;
 const { SAMPLE_CHAT_TEXT, SAMPLE_CASE, SAMPLE_TITLE } = __m5_sample;
 const { initCaseBar } = __m6_casebar;
-const { DEPTHS, DEFAULT_DEPTH } = __m7_depth;
+const { DEPTHS, DEFAULT_DEPTH, DEPTH_BUDGET, DEPTH_HINT, TIER_DEPTH } = __m7_depth;
 const { buildSystemPrompt, buildUserMessage, CASE_SCHEMA } = __m8_prompt;
 const $ = (s) => document.querySelector(s);
 const store = {
@@ -2021,7 +2058,7 @@ const LINES = {
 };
 
 // ai: "checking" until the viewer answers, then "ready" or "off"
-const state = { chat: null, stats: null, caseFile: null, isSample: false, busy: false, ai: "checking", aiOffReason: "", sample: null, downloads: null, ctl: null };
+const state = { owner: false, unavailableDepths: new Set(), chat: null, stats: null, caseFile: null, isSample: false, busy: false, ai: "checking", aiOffReason: "", sample: null, downloads: null, ctl: null };
 
 // ---------- helpers ----------
 function toast(msg, ms = 2800) {
@@ -2048,9 +2085,8 @@ function buildPersonas() {
   if (saved.spice) { const el = document.querySelector(`input[name="spice"][value="${saved.spice}"]`); if (el) el.checked = true; }
   if (typeof saved.anon === "boolean") $("#anon").checked = saved.anon;
   if (DEPTHS[saved.depth]) { const el = document.querySelector(`input[name="depth"][value="${saved.depth}"]`); if (el) el.checked = true; }
-  const note = () => { $("#depth-note").textContent = DEPTHS[settings().depth].desc; };
-  document.querySelectorAll('input[name="depth"]').forEach((el) => el.addEventListener("change", note));
-  note();
+  document.querySelectorAll('input[name="depth"]').forEach((el) => el.addEventListener("change", () => updateDepthNote()));
+  updateDepthNote();
   document.querySelectorAll('input[name="persona"],input[name="spice"],input[name="depth"],#anon').forEach((el) => el.addEventListener("change", saveSettings));
 }
 
@@ -2060,13 +2096,39 @@ async function connect() {
   if (!c || typeof c.use !== "function") {
     state.ai = "off"; state.aiOffReason = "outside";
   } else {
-    const [sample, downloads] = await Promise.all([c.use("sample").catch(() => null), c.use("downloads").catch(() => null)]);
+    const [sample, downloads, user] = await Promise.all(["sample", "downloads", "user"].map((n) => c.use(n).catch(() => null)));
     state.sample = sample; state.downloads = downloads;
     state.ai = sample ? "ready" : "off";
     if (!sample) state.aiOffReason = "unavailable";
+    state.owner = Boolean(await user?.isOwner?.().catch(() => false));
+    // Depths this viewer's Claude plan can run (the platform may not say; then all stay open).
+    const limits = sample ? await sample.limits().catch(() => null) : null;
+    const tiers = Array.isArray(limits?.modelTiers) ? limits.modelTiers : null;
+    state.unavailableDepths = new Set(tiers ? Object.keys(DEPTHS).filter((d) => !tiers.includes(DEPTHS[d].tier)) : []);
+    applyDepthAccess();
   }
   $("#ai-text").innerHTML = aiLabel();
   if (state.chat && !state.caseFile) renderInterrogateCard();
+}
+function applyDepthAccess() {
+  $("#secret-depth").hidden = !state.owner;
+  $("#dp-x").disabled = !state.owner || state.unavailableDepths.has("secret");
+  document.querySelectorAll('input[name="depth"]').forEach((el) => {
+    if (el.value === "secret") return;
+    el.disabled = state.unavailableDepths.has(el.value);
+    el.nextElementSibling.title = el.disabled ? "Not available on your Claude plan" : "";
+  });
+  if (!document.querySelector('input[name="depth"]:checked:not(:disabled)')) {
+    const open = [...document.querySelectorAll('input[name="depth"]:not(:disabled)')].filter((el) => el.value !== "secret").pop();
+    if (open) open.checked = true;
+  }
+  updateDepthNote();
+}
+function updateDepthNote() {
+  const d = settings().depth;
+  let text = DEPTHS[d].desc;
+  if (state.unavailableDepths.size && d !== "secret") text += " Greyed-out depths aren't on your Claude plan.";
+  $("#depth-note").textContent = text;
 }
 function aiLabel() {
   if (state.ai === "checking") return "Connecting to Claude…";
@@ -2184,11 +2246,23 @@ function buildPrompt(s, anon, budget) {
   const stats = statsForAi(state.stats, anon ? anon.name : (n) => n);
   return `${buildSystemPrompt({ persona: s.persona, spice: s.spice })}
 
+${DEPTH_HINT[s.depth]}
+
 FORMAT
 Reply with only one JSON object, no other text, matching this JSON Schema exactly (every property is required):
 ${JSON.stringify(CASE_SCHEMA)}
 
 ${buildUserMessage({ stats, transcript })}`;
+}
+
+// Reads the reply as JSON: the whole text, else a fenced block, else the outermost braces.
+function parseJson(text) {
+  const tries = [text, (text.match(/```(?:json)?\s*([\s\S]*?)```/) || [])[1], text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)];
+  for (const t of tries) {
+    if (!t) continue;
+    try { return JSON.parse(t); } catch { /* try the next shape */ }
+  }
+  throw { code: "invalid_json" };
 }
 
 function normalise(cf) {
@@ -2221,20 +2295,29 @@ async function startInvestigation() {
   try {
     setStep(0); await tick();
     const anon = s.anon ? makeNameMap(state.stats.people) : null;
-    let budget = 150_000, prompt = buildPrompt(s, anon, budget);
+    if (s.depth === "secret" && !state.owner) s.depth = "deep";
+    let budget = DEPTH_BUDGET[s.depth], prompt = buildPrompt(s, anon, budget);
     while (bytes(prompt) > MAX_BYTES && budget > 20_000) { budget = Math.floor(budget * 0.75); prompt = buildPrompt(s, anon, budget); }
     setStep(1);
     let started = false;
-    let cf = await state.sample.json(prompt, {
+    const want = DEPTHS[s.depth];
+    const res = await state.sample(prompt, {
       signal: state.ctl.signal,
-      model: DEPTHS[s.depth].model,
-      modelTier: DEPTHS[s.depth].tier,
+      model: want.model,
+      modelTier: want.tier,
+      ...(want.effort ? { effort: want.effort } : {}),
       onText: ({ text }) => {
         if (!started) { started = true; setStep(3); }
         $("#ov-progress").textContent = `${text.length.toLocaleString()} characters of evidence written…`;
       },
     });
-    cf = normalise(cf);
+    let cf = normalise(parseJson(res.text));
+    // Tell the viewer which depth actually ran (their plan may have used a lighter model).
+    const ranDepth = res.modelApplied === want.model ? s.depth : (TIER_DEPTH[res.modelTierApplied] || s.depth);
+    state.ranDepth = ranDepth;
+    if (ranDepth !== s.depth && !(s.depth === "secret" && ranDepth === "deep")) {
+      toast(`Your Claude plan ran this as ${DEPTHS[ranDepth].emoji} ${DEPTHS[ranDepth].label} instead of ${want.label}.`, 6000);
+    }
     if (anon) cf = restoreDeep(cf, anon.restore);
     showCase(cf);
   } catch (e) {
@@ -2263,6 +2346,8 @@ async function runSample(s) {
 
 function showCase(cf) {
   state.caseFile = cf;
+  const d = state.isSample ? null : DEPTHS[state.ranDepth];
+  if (d) $("#case-meta").textContent = `${state.stats.totalMessages.toLocaleString()} messages · ${state.stats.people.length} suspects · ${d.emoji} ${d.label}`;
   $("#interrogate-wrap").innerHTML = "";
   $("#ai-sections").innerHTML = renderCase(cf, state.stats);
   $("#stats-sections").innerHTML = renderStats(state.stats, cf);

@@ -7,7 +7,7 @@ import { renderCase, renderStats, roastText, esc } from "../public/js/report.js"
 import { makeShareCard } from "../public/js/share.js";
 import { SAMPLE_CHAT_TEXT, SAMPLE_CASE, SAMPLE_TITLE } from "../public/js/sample.js";
 import { initCaseBar } from "../public/js/casebar.js";
-import { DEPTHS, DEFAULT_DEPTH } from "../public/js/depth.js";
+import { DEPTHS, DEFAULT_DEPTH, DEPTH_BUDGET, DEPTH_HINT, TIER_DEPTH } from "../public/js/depth.js";
 import { buildSystemPrompt, buildUserMessage, CASE_SCHEMA } from "../server/prompt.js";
 
 const $ = (s) => document.querySelector(s);
@@ -33,7 +33,7 @@ const LINES = {
 };
 
 // ai: "checking" until the viewer answers, then "ready" or "off"
-const state = { chat: null, stats: null, caseFile: null, isSample: false, busy: false, ai: "checking", aiOffReason: "", sample: null, downloads: null, ctl: null };
+const state = { owner: false, unavailableDepths: new Set(), chat: null, stats: null, caseFile: null, isSample: false, busy: false, ai: "checking", aiOffReason: "", sample: null, downloads: null, ctl: null };
 
 // ---------- helpers ----------
 function toast(msg, ms = 2800) {
@@ -60,9 +60,8 @@ function buildPersonas() {
   if (saved.spice) { const el = document.querySelector(`input[name="spice"][value="${saved.spice}"]`); if (el) el.checked = true; }
   if (typeof saved.anon === "boolean") $("#anon").checked = saved.anon;
   if (DEPTHS[saved.depth]) { const el = document.querySelector(`input[name="depth"][value="${saved.depth}"]`); if (el) el.checked = true; }
-  const note = () => { $("#depth-note").textContent = DEPTHS[settings().depth].desc; };
-  document.querySelectorAll('input[name="depth"]').forEach((el) => el.addEventListener("change", note));
-  note();
+  document.querySelectorAll('input[name="depth"]').forEach((el) => el.addEventListener("change", () => updateDepthNote()));
+  updateDepthNote();
   document.querySelectorAll('input[name="persona"],input[name="spice"],input[name="depth"],#anon').forEach((el) => el.addEventListener("change", saveSettings));
 }
 
@@ -72,13 +71,39 @@ async function connect() {
   if (!c || typeof c.use !== "function") {
     state.ai = "off"; state.aiOffReason = "outside";
   } else {
-    const [sample, downloads] = await Promise.all([c.use("sample").catch(() => null), c.use("downloads").catch(() => null)]);
+    const [sample, downloads, user] = await Promise.all(["sample", "downloads", "user"].map((n) => c.use(n).catch(() => null)));
     state.sample = sample; state.downloads = downloads;
     state.ai = sample ? "ready" : "off";
     if (!sample) state.aiOffReason = "unavailable";
+    state.owner = Boolean(await user?.isOwner?.().catch(() => false));
+    // Depths this viewer's Claude plan can run (the platform may not say; then all stay open).
+    const limits = sample ? await sample.limits().catch(() => null) : null;
+    const tiers = Array.isArray(limits?.modelTiers) ? limits.modelTiers : null;
+    state.unavailableDepths = new Set(tiers ? Object.keys(DEPTHS).filter((d) => !tiers.includes(DEPTHS[d].tier)) : []);
+    applyDepthAccess();
   }
   $("#ai-text").innerHTML = aiLabel();
   if (state.chat && !state.caseFile) renderInterrogateCard();
+}
+function applyDepthAccess() {
+  $("#secret-depth").hidden = !state.owner;
+  $("#dp-x").disabled = !state.owner || state.unavailableDepths.has("secret");
+  document.querySelectorAll('input[name="depth"]').forEach((el) => {
+    if (el.value === "secret") return;
+    el.disabled = state.unavailableDepths.has(el.value);
+    el.nextElementSibling.title = el.disabled ? "Not available on your Claude plan" : "";
+  });
+  if (!document.querySelector('input[name="depth"]:checked:not(:disabled)')) {
+    const open = [...document.querySelectorAll('input[name="depth"]:not(:disabled)')].filter((el) => el.value !== "secret").pop();
+    if (open) open.checked = true;
+  }
+  updateDepthNote();
+}
+function updateDepthNote() {
+  const d = settings().depth;
+  let text = DEPTHS[d].desc;
+  if (state.unavailableDepths.size && d !== "secret") text += " Greyed-out depths aren't on your Claude plan.";
+  $("#depth-note").textContent = text;
 }
 function aiLabel() {
   if (state.ai === "checking") return "Connecting to Claude…";
@@ -196,11 +221,23 @@ function buildPrompt(s, anon, budget) {
   const stats = statsForAi(state.stats, anon ? anon.name : (n) => n);
   return `${buildSystemPrompt({ persona: s.persona, spice: s.spice })}
 
+${DEPTH_HINT[s.depth]}
+
 FORMAT
 Reply with only one JSON object, no other text, matching this JSON Schema exactly (every property is required):
 ${JSON.stringify(CASE_SCHEMA)}
 
 ${buildUserMessage({ stats, transcript })}`;
+}
+
+// Reads the reply as JSON: the whole text, else a fenced block, else the outermost braces.
+function parseJson(text) {
+  const tries = [text, (text.match(/```(?:json)?\s*([\s\S]*?)```/) || [])[1], text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)];
+  for (const t of tries) {
+    if (!t) continue;
+    try { return JSON.parse(t); } catch { /* try the next shape */ }
+  }
+  throw { code: "invalid_json" };
 }
 
 function normalise(cf) {
@@ -233,20 +270,29 @@ async function startInvestigation() {
   try {
     setStep(0); await tick();
     const anon = s.anon ? makeNameMap(state.stats.people) : null;
-    let budget = 150_000, prompt = buildPrompt(s, anon, budget);
+    if (s.depth === "secret" && !state.owner) s.depth = "deep";
+    let budget = DEPTH_BUDGET[s.depth], prompt = buildPrompt(s, anon, budget);
     while (bytes(prompt) > MAX_BYTES && budget > 20_000) { budget = Math.floor(budget * 0.75); prompt = buildPrompt(s, anon, budget); }
     setStep(1);
     let started = false;
-    let cf = await state.sample.json(prompt, {
+    const want = DEPTHS[s.depth];
+    const res = await state.sample(prompt, {
       signal: state.ctl.signal,
-      model: DEPTHS[s.depth].model,
-      modelTier: DEPTHS[s.depth].tier,
+      model: want.model,
+      modelTier: want.tier,
+      ...(want.effort ? { effort: want.effort } : {}),
       onText: ({ text }) => {
         if (!started) { started = true; setStep(3); }
         $("#ov-progress").textContent = `${text.length.toLocaleString()} characters of evidence written…`;
       },
     });
-    cf = normalise(cf);
+    let cf = normalise(parseJson(res.text));
+    // Tell the viewer which depth actually ran (their plan may have used a lighter model).
+    const ranDepth = res.modelApplied === want.model ? s.depth : (TIER_DEPTH[res.modelTierApplied] || s.depth);
+    state.ranDepth = ranDepth;
+    if (ranDepth !== s.depth && !(s.depth === "secret" && ranDepth === "deep")) {
+      toast(`Your Claude plan ran this as ${DEPTHS[ranDepth].emoji} ${DEPTHS[ranDepth].label} instead of ${want.label}.`, 6000);
+    }
     if (anon) cf = restoreDeep(cf, anon.restore);
     showCase(cf);
   } catch (e) {
@@ -275,6 +321,8 @@ async function runSample(s) {
 
 function showCase(cf) {
   state.caseFile = cf;
+  const d = state.isSample ? null : DEPTHS[state.ranDepth];
+  if (d) $("#case-meta").textContent = `${state.stats.totalMessages.toLocaleString()} messages · ${state.stats.people.length} suspects · ${d.emoji} ${d.label}`;
   $("#interrogate-wrap").innerHTML = "";
   $("#ai-sections").innerHTML = renderCase(cf, state.stats);
   $("#stats-sections").innerHTML = renderStats(state.stats, cf);
