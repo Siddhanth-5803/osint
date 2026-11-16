@@ -32,7 +32,13 @@ export const config = {
 
   // Claude
   anthropicKeySet: Boolean(env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN),
-  model: env.CLAUDE_MODEL || "claude-opus-5-5",
+  // Investigation depth -> Claude model. ALLOWED_DEPTHS limits which ones visitors can pick.
+  depthModels: {
+    quick: env.MODEL_QUICK || "claude-haiku-5-5",
+    standard: env.MODEL_STANDARD || "claude-sonnet-5-5",
+    deep: env.MODEL_DEEP || "claude-opus-5-5",
+  },
+  allowedDepths: (env.ALLOWED_DEPTHS || "quick,standard,deep").split(",").map((s) => s.trim()).filter((d) => ["quick", "standard", "deep"].includes(d)),
   effort: env.CLAUDE_EFFORT || "medium",
 
   // Access and payments
@@ -57,4 +63,5 @@ export const config = {
   mockAiFile: env.MOCK_AI_FILE || "",
 };
 
+if (!config.allowedDepths.length) config.allowedDepths = ["standard"];
 config.razorpayEnabled = Boolean(config.razorpayKeyId && config.razorpayKeySecret);

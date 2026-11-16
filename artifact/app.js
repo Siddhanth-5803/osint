@@ -7,6 +7,7 @@ import { renderCase, renderStats, roastText, esc } from "../public/js/report.js"
 import { makeShareCard } from "../public/js/share.js";
 import { SAMPLE_CHAT_TEXT, SAMPLE_CASE, SAMPLE_TITLE } from "../public/js/sample.js";
 import { initCaseBar } from "../public/js/casebar.js";
+import { DEPTHS, DEFAULT_DEPTH } from "../public/js/depth.js";
 import { buildSystemPrompt, buildUserMessage, CASE_SCHEMA } from "../server/prompt.js";
 
 const $ = (s) => document.querySelector(s);
@@ -43,6 +44,7 @@ function toast(msg, ms = 2800) {
 const settings = () => ({
   persona: document.querySelector('input[name="persona"]:checked')?.value || DEFAULT_PERSONA,
   spice: document.querySelector('input[name="spice"]:checked')?.value || "spicy",
+  depth: document.querySelector('input[name="depth"]:checked:not(:disabled)')?.value || DEFAULT_DEPTH,
   anon: $("#anon").checked,
 });
 const saveSettings = () => store.set("settings", settings());
@@ -57,7 +59,11 @@ function buildPersonas() {
 <label for="pe-${k}"><b>${emo}</b><span>${name}</span><small>${desc}</small></label></div>`).join("");
   if (saved.spice) { const el = document.querySelector(`input[name="spice"][value="${saved.spice}"]`); if (el) el.checked = true; }
   if (typeof saved.anon === "boolean") $("#anon").checked = saved.anon;
-  document.querySelectorAll('input[name="persona"],input[name="spice"],#anon').forEach((el) => el.addEventListener("change", saveSettings));
+  if (DEPTHS[saved.depth]) { const el = document.querySelector(`input[name="depth"][value="${saved.depth}"]`); if (el) el.checked = true; }
+  const note = () => { $("#depth-note").textContent = DEPTHS[settings().depth].desc; };
+  document.querySelectorAll('input[name="depth"]').forEach((el) => el.addEventListener("change", note));
+  note();
+  document.querySelectorAll('input[name="persona"],input[name="spice"],input[name="depth"],#anon').forEach((el) => el.addEventListener("change", saveSettings));
 }
 
 // ---------- capabilities ----------
@@ -157,7 +163,7 @@ function renderInterrogateCard(errorMsg = "") {
   <div>
     <h2>🚨 Send in the investigator</h2>
     <p>Your investigator reads the messages and writes their speciality report, plus mugshots, ships &amp; beefs, the unsaid, awards and a fix-it plan.</p>
-    <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
+    <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span><span class="chip m">${DEPTHS[s.depth].emoji} ${DEPTHS[s.depth].label}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
     <p class="note">${esc(note)}</p>
     ${errorMsg ? `<p class="note" style="color:#ffb3b9">⚠️ ${esc(errorMsg)}</p>` : ""}
   </div>
@@ -233,7 +239,8 @@ async function startInvestigation() {
     let started = false;
     let cf = await state.sample.json(prompt, {
       signal: state.ctl.signal,
-      modelTier: "default",
+      model: DEPTHS[s.depth].model,
+      modelTier: DEPTHS[s.depth].tier,
       onText: ({ text }) => {
         if (!started) { started = true; setStep(3); }
         $("#ov-progress").textContent = `${text.length.toLocaleString()} characters of evidence written…`;

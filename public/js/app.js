@@ -4,6 +4,7 @@ import { renderCase, renderStats, roastText, esc } from "./report.js";
 import { makeShareCard, shareOrDownload } from "./share.js";
 import { SAMPLE_CHAT_TEXT, SAMPLE_CASE, SAMPLE_TITLE } from "./sample.js";
 import { initCaseBar } from "./casebar.js";
+import { DEPTHS, DEFAULT_DEPTH } from "./depth.js";
 
 const $ = (s) => document.querySelector(s);
 const store = {
@@ -31,6 +32,7 @@ function toast(msg, ms = 2600) {
 const settings = () => ({
   persona: document.querySelector('input[name="persona"]:checked')?.value || DEFAULT_PERSONA,
   spice: document.querySelector('input[name="spice"]:checked')?.value || "spicy",
+  depth: document.querySelector('input[name="depth"]:checked:not(:disabled)')?.value || DEFAULT_DEPTH,
   anon: $("#anon").checked,
 });
 function saveSettings() { store.set("settings", settings()); }
@@ -51,7 +53,11 @@ function buildPersonas() {
 <label for="pe-${k}"><b>${emo}</b><span>${name}</span><small>${desc}</small></label></div>`).join("");
   if (saved.spice) { const el = document.querySelector(`input[name="spice"][value="${saved.spice}"]`); if (el) el.checked = true; }
   if (typeof saved.anon === "boolean") $("#anon").checked = saved.anon;
-  document.querySelectorAll('input[name="persona"],input[name="spice"],#anon').forEach((el) => el.addEventListener("change", saveSettings));
+  if (DEPTHS[saved.depth]) { const el = document.querySelector(`input[name="depth"][value="${saved.depth}"]`); if (el) el.checked = true; }
+  const note = () => { $("#depth-note").textContent = DEPTHS[settings().depth].desc; };
+  document.querySelectorAll('input[name="depth"]').forEach((el) => el.addEventListener("change", note));
+  note();
+  document.querySelectorAll('input[name="persona"],input[name="spice"],input[name="depth"],#anon').forEach((el) => el.addEventListener("change", saveSettings));
 }
 
 function priceLabel() {
@@ -68,6 +74,15 @@ async function loadConfig() {
   try { state.config = await api("/api/config"); }
   catch { state.config = { accessMode: "free", priceInr: 5, aiReady: false, offline: true, razorpayEnabled: false }; }
   $("#price-text").innerHTML = priceLabel();
+  const allowed = state.config.depths;
+  if (Array.isArray(allowed) && allowed.length) {
+    document.querySelectorAll('input[name="depth"]').forEach((el) => { el.disabled = !allowed.includes(el.value); });
+    if (!document.querySelector('input[name="depth"]:checked:not(:disabled)')) {
+      const first = document.querySelector('input[name="depth"]:not(:disabled)');
+      if (first) first.checked = true;
+    }
+    $("#depth-note").textContent = DEPTHS[settings().depth].desc;
+  }
 }
 
 // ---------- file handling ----------
@@ -154,7 +169,7 @@ function renderInterrogateCard(errorMsg = "") {
   <div>
     <h2>🚨 Send in the investigator</h2>
     <p>The stats below are free. Your investigator reads the messages and writes their speciality report, plus mugshots, ships &amp; beefs, the unsaid, awards and a fix-it plan.</p>
-    <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
+    <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span><span class="chip m">${DEPTHS[s.depth].emoji} ${DEPTHS[s.depth].label}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
     <p class="note">${esc(priceNote)}</p>
     ${errorMsg ? `<p class="note" style="color:#ffb3b9">⚠️ ${esc(errorMsg)}</p>` : ""}
   </div>
@@ -206,7 +221,7 @@ async function startInterrogation(payment = null) {
     const transcript = buildTranscript(state.chat, state.stats, { anon });
     const stats = statsForAi(state.stats, anon ? anon.name : (n) => n);
     setStep(2);
-    const res = await api("/api/analyze", { stats, transcript, persona: s.persona, spice: s.spice, promo: promo || undefined, payment: payment || undefined });
+    const res = await api("/api/analyze", { stats, transcript, persona: s.persona, spice: s.spice, depth: s.depth, promo: promo || undefined, payment: payment || undefined });
     setStep(3); await sleep(400);
     let cf = res.caseFile;
     if (anon) cf = restoreDeep(cf, anon.restore);

@@ -17,7 +17,8 @@ export class AnalysisError extends Error {
   }
 }
 
-export async function analyzeChat({ stats, transcript, persona, spice }) {
+export async function analyzeChat({ stats, transcript, persona, spice, depth = "standard" }) {
+  const model = config.depthModels[depth] || config.depthModels.standard;
   if (config.mockAiFile) return { caseFile: JSON.parse(fs.readFileSync(config.mockAiFile, "utf8")), model: "mock-file" };
   if (config.mockAi) return mockCase(stats);
   if (!config.anthropicKeySet) {
@@ -25,13 +26,13 @@ export async function analyzeChat({ stats, transcript, persona, spice }) {
   }
 
   const params = {
-    model: config.model,
+    model,
     max_tokens: 16000,
     system: buildSystemPrompt({ persona, spice }),
     messages: [{ role: "user", content: buildUserMessage({ stats, transcript }) }],
     output_config: { effort: config.effort, format: { type: "json_schema", schema: CASE_SCHEMA } },
   };
-  if (supportsFallbacks(config.model)) {
+  if (supportsFallbacks(model)) {
     params.betas = ["server-side-fallback-2026-07-01"];
     params.fallbacks = "default";
   }

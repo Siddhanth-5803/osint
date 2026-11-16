@@ -4,7 +4,7 @@ A funny, forensic roast of your group chats. Drop a WhatsApp, Telegram or Instag
 
 - **Free stats, instantly, on your device:** who talks most, reply speeds, night owls, conversation starters and killers, double-texters, deleted messages, heatmap, a who-talks-to-whom string board, favourite words and emojis, and badges.
 - **The AI interrogation:** mugshots with each person's real role, charges, "what they type vs what they mean", roasts and redeeming qualities. Then ships and beefs, the unsaid (tap to declassify), awards, a fix-it plan, exhibits, a timeline and a share card for stories.
-- **Five investigators, each with a speciality report:** Sherlock investigates the fights, Cupid handles love matters, Aunty delivers sarcasm, the Gossip Queen does character analysis, and Osho finds the life lessons. Three spice levels: Wholesome, Spicy and Nuclear. Reports are always in English, even for Hindi, Hinglish or Bengali chats.
+- **Five investigators, each with a speciality report:** Sherlock investigates the fights, Cupid handles love matters, Aunty delivers sarcasm, the Gossip Queen does character analysis, and Osho finds the life lessons. Three spice levels for tone (Wholesome, Spicy, Nuclear) and three investigation depths that pick the Claude model: 🔍 Quick Peek (Haiku), 🕵️ Stakeout (Sonnet) and 🧬 Full Forensics (Opus). Reports are always in English, even for Hindi, Hinglish or Bengali chats.
 - **Payments ready, switched off:** ₹5 per raid through Razorpay when you turn it on. Your promo code gives unlimited free raids.
 
 ---
@@ -24,7 +24,7 @@ How it behaves:
 
 - **It's invite-only by default.** Anyone with the link gets the free stats and the sample raid. Only people with a promo code can run the investigation, which is what costs you money. Your own built-in code always works, and phones remember the code after the first time.
 - **Want it open to everyone with the link?** In Render, go to **Environment**, change `ACCESS_MODE` to `free`, and save. Each person then gets `FREE_DAILY_LIMIT` investigations per day.
-- **It costs about ₹25 per investigation** on the default model. Change `CLAUDE_MODEL` to `claude-haiku-5-5` for under ₹1 each (see the cost table below).
+- **Cost depends on the depth people pick:** under ₹1 for Quick Peek, about ₹13 for Stakeout, about ₹25 for Full Forensics. To limit what visitors can pick, set `ALLOWED_DEPTHS` in Render, for example `quick,standard` (see the cost table below).
 - **Render's free plan sleeps after 15 minutes idle.** The first visit after that takes about a minute to wake up.
 
 ---
@@ -120,13 +120,13 @@ Payments are verified with Razorpay's signature check. Each payment unlocks one 
 
 ### Cost per raid (what you pay Anthropic)
 
-| `CLAUDE_MODEL` | Approx. cost per raid | Notes |
-|---|---|---|
-| `claude-opus-5-5` (default) | ~₹25 | Funniest, sharpest writing |
-| `claude-sonnet-5-5` | ~₹13 | Very good |
-| `claude-haiku-5-5` | under ₹1 | Good, very cheap |
+| Depth (`ALLOWED_DEPTHS` value) | Model | Approx. cost per raid | Notes |
+|---|---|---|---|
+| 🔍 Quick Peek (`quick`) | `claude-haiku-5-5` | under ₹1 | Fastest, lighter read |
+| 🕵️ Stakeout (`standard`, default) | `claude-sonnet-5-5` | ~₹13 | Balanced |
+| 🧬 Full Forensics (`deep`) | `claude-opus-5-5` | ~₹25 | Deepest analysis, slowest |
 
-At ₹5 per raid you lose money on Opus and Sonnet. If you start charging, switch to `claude-haiku-5-5` or raise the price. While it's just you and your friends, Opus gives the best roasts.
+At ₹5 per raid you lose money on Stakeout and Full Forensics. If you start charging, set `ALLOWED_DEPTHS=quick` or raise the price. To swap a model, set `MODEL_QUICK`, `MODEL_STANDARD` or `MODEL_DEEP`.
 
 ---
 

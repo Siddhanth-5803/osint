@@ -378,3 +378,9 @@ td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 }
 
 #interrogate-wrap:empty { display: none; }
+.depth-note { margin-top: -6px; font-size: .88rem; color: var(--navy-soft); }
+.seg input:disabled + label { opacity: .4; cursor: not-allowed; }
+.seg-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
+.seg-3 label { text-align: center; padding: 8px 6px; font-size: .9rem; line-height: 1.25; }
+.seg-3 label:last-of-type { border-right: 0; }
+.row-opts > div:has(.seg-3) { flex: 1 1 100%; }

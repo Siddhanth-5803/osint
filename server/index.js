@@ -64,6 +64,7 @@ function publicConfig(ip) {
     razorpayEnabled: config.razorpayEnabled,
     aiReady: config.anthropicKeySet || config.mockAi || Boolean(config.mockAiFile),
     mockAi: config.mockAi,
+    depths: config.allowedDepths,
     personas: Object.fromEntries(Object.entries(PERSONAS).map(([k, v]) => [k, v.label])),
   };
 }
@@ -86,7 +87,7 @@ async function handleApi(req, res, url) {
 
   if (req.method === "POST" && url.pathname === "/api/analyze") {
     const body = await readJson(req);
-    const { stats, transcript, persona = "sherlock", spice = "spicy", promo, payment } = body;
+    const { stats, transcript, persona = "sherlock", spice = "spicy", depth = "standard", promo, payment } = body;
     if (!stats || typeof stats !== "object" || typeof transcript !== "string" || transcript.length < 20) {
       return send(res, 400, { error: "No chat found in the request." });
     }
@@ -94,12 +95,13 @@ async function handleApi(req, res, url) {
     if (!PERSONAS[persona] || !SPICE[spice]) {
       return send(res, 400, { error: "Unknown persona or spice level." });
     }
+    if (!config.allowedDepths.includes(depth)) return send(res, 400, { error: "That investigation depth is switched off on this site." });
     if (promo && !promoAttemptAllowed(ip)) return send(res, 429, { error: "Too many promo tries. Wait an hour." });
 
     const access = checkAccess({ ip, promo, payment });
     if (!access.ok) return send(res, access.status, { error: access.reason, needs: config.accessMode });
 
-    const result = await analyzeChat({ stats, transcript, persona, spice });
+    const result = await analyzeChat({ stats, transcript, persona, spice, depth });
     if (access.kind === "free") recordFreeUse(ip);
     if (access.kind === "paid") markOrderUsed(payment.orderId);
     console.log(`[raid] ${new Date().toISOString()} kind=${access.kind} model=${result.model} in=${result.usage?.input_tokens ?? "-"} out=${result.usage?.output_tokens ?? "-"}`);
@@ -140,7 +142,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(config.port, () => {
   console.log(`\n🚨 FBI, OPEN UP! is running at http://localhost:${config.port}`);
-  console.log(`   access mode: ${config.accessMode} · price: ₹${config.priceInr} · model: ${config.mockAi ? "MOCK" : config.model}`);
+  console.log(`   access mode: ${config.accessMode} · price: ₹${config.priceInr} · depths: ${config.mockAi ? "MOCK" : config.allowedDepths.join(", ")}`);
   if (!config.anthropicKeySet && !config.mockAi) console.log("   ⚠ No ANTHROPIC_API_KEY set: free stats work, the AI roast will not.");
   if (config.accessMode === "paid" && !config.razorpayEnabled) console.log("   ⚠ ACCESS_MODE=paid but Razorpay keys are missing.");
 });

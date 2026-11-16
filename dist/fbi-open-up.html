@@ -385,6 +385,12 @@ td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 }
 
 #interrogate-wrap:empty { display: none; }
+.depth-note { margin-top: -6px; font-size: .88rem; color: var(--navy-soft); }
+.seg input:disabled + label { opacity: .4; cursor: not-allowed; }
+.seg-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
+.seg-3 label { text-align: center; padding: 8px 6px; font-size: .9rem; line-height: 1.25; }
+.seg-3 label:last-of-type { border-right: 0; }
+.row-opts > div:has(.seg-3) { flex: 1 1 100%; }
 
 /* one-click version: the platform already pads the page for phone notches */
 body { padding-top: 0; padding-bottom: 0; }
@@ -450,13 +456,22 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
         <div class="row-opts">
           <div>
             <span class="opt-title">Spice level</span>
-            <div class="seg" role="radiogroup" aria-label="Spice level">
+            <div class="seg seg-3" role="radiogroup" aria-label="Spice level">
               <input type="radio" name="spice" id="sp-w" value="wholesome"><label for="sp-w">😇 Wholesome</label>
               <input type="radio" name="spice" id="sp-s" value="spicy" checked><label for="sp-s">🌶️ Spicy</label>
               <input type="radio" name="spice" id="sp-n" value="nuclear"><label for="sp-n">☢️ Nuclear</label>
             </div>
           </div>
+          <div>
+            <span class="opt-title">Investigation depth</span>
+            <div class="seg seg-3" role="radiogroup" aria-label="Investigation depth">
+              <input type="radio" name="depth" id="dp-q" value="quick"><label for="dp-q">🔍 Quick Peek</label>
+              <input type="radio" name="depth" id="dp-s" value="standard" checked><label for="dp-s">🕵️ Stakeout</label>
+              <input type="radio" name="depth" id="dp-d" value="deep"><label for="dp-d">🧬 Full Forensics</label>
+            </div>
+          </div>
         </div>
+        <p class="depth-note" id="depth-note">Balanced. Sharp roasts, good speed.</p>
         <label class="toggle"><input type="checkbox" id="anon" checked> Hide real names from the AI (they come back in your report)</label>
       </div>
     </div>
@@ -1764,7 +1779,19 @@ function initCaseBar() {
 return { initCaseBar };
 })();
 
-const __m7_prompt = (() => {
+const __m7_depth = (() => {
+// Investigation depth: which Claude model does the analysis.
+const DEPTHS = {
+  quick: { emoji: "🔍", label: "Quick Peek", model: "claude-haiku-5-5", tier: "quick", desc: "Fastest. A lighter read of the chat." },
+  standard: { emoji: "🕵️", label: "Stakeout", model: "claude-sonnet-5-5", tier: "default", desc: "Balanced. Sharp roasts, good speed." },
+  deep: { emoji: "🧬", label: "Full Forensics", model: "claude-opus-5-5", tier: "complex", desc: "Deepest analysis. Slowest, can take a couple of minutes." },
+};
+const DEFAULT_DEPTH = "standard";
+
+return { DEPTHS, DEFAULT_DEPTH };
+})();
+
+const __m8_prompt = (() => {
 // The detective's brain: system prompt, personas, spice levels and the JSON schema.
 
 const PERSONAS = {
@@ -1962,7 +1989,8 @@ const { renderCase, renderStats, roastText, esc } = __m3_report;
 const { makeShareCard } = __m4_share;
 const { SAMPLE_CHAT_TEXT, SAMPLE_CASE, SAMPLE_TITLE } = __m5_sample;
 const { initCaseBar } = __m6_casebar;
-const { buildSystemPrompt, buildUserMessage, CASE_SCHEMA } = __m7_prompt;
+const { DEPTHS, DEFAULT_DEPTH } = __m7_depth;
+const { buildSystemPrompt, buildUserMessage, CASE_SCHEMA } = __m8_prompt;
 const $ = (s) => document.querySelector(s);
 const store = {
   get(k, d) { try { const v = localStorage.getItem("fbi:" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -1997,6 +2025,7 @@ function toast(msg, ms = 2800) {
 const settings = () => ({
   persona: document.querySelector('input[name="persona"]:checked')?.value || DEFAULT_PERSONA,
   spice: document.querySelector('input[name="spice"]:checked')?.value || "spicy",
+  depth: document.querySelector('input[name="depth"]:checked:not(:disabled)')?.value || DEFAULT_DEPTH,
   anon: $("#anon").checked,
 });
 const saveSettings = () => store.set("settings", settings());
@@ -2011,7 +2040,11 @@ function buildPersonas() {
 <label for="pe-${k}"><b>${emo}</b><span>${name}</span><small>${desc}</small></label></div>`).join("");
   if (saved.spice) { const el = document.querySelector(`input[name="spice"][value="${saved.spice}"]`); if (el) el.checked = true; }
   if (typeof saved.anon === "boolean") $("#anon").checked = saved.anon;
-  document.querySelectorAll('input[name="persona"],input[name="spice"],#anon').forEach((el) => el.addEventListener("change", saveSettings));
+  if (DEPTHS[saved.depth]) { const el = document.querySelector(`input[name="depth"][value="${saved.depth}"]`); if (el) el.checked = true; }
+  const note = () => { $("#depth-note").textContent = DEPTHS[settings().depth].desc; };
+  document.querySelectorAll('input[name="depth"]').forEach((el) => el.addEventListener("change", note));
+  note();
+  document.querySelectorAll('input[name="persona"],input[name="spice"],input[name="depth"],#anon').forEach((el) => el.addEventListener("change", saveSettings));
 }
 
 // ---------- capabilities ----------
@@ -2111,7 +2144,7 @@ function renderInterrogateCard(errorMsg = "") {
   <div>
     <h2>🚨 Send in the investigator</h2>
     <p>Your investigator reads the messages and writes their speciality report, plus mugshots, ships &amp; beefs, the unsaid, awards and a fix-it plan.</p>
-    <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
+    <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span><span class="chip m">${DEPTHS[s.depth].emoji} ${DEPTHS[s.depth].label}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
     <p class="note">${esc(note)}</p>
     ${errorMsg ? `<p class="note" style="color:#ffb3b9">⚠️ ${esc(errorMsg)}</p>` : ""}
   </div>
@@ -2187,7 +2220,8 @@ async function startInvestigation() {
     let started = false;
     let cf = await state.sample.json(prompt, {
       signal: state.ctl.signal,
-      modelTier: "default",
+      model: DEPTHS[s.depth].model,
+      modelTier: DEPTHS[s.depth].tier,
       onText: ({ text }) => {
         if (!started) { started = true; setStep(3); }
         $("#ov-progress").textContent = `${text.length.toLocaleString()} characters of evidence written…`;

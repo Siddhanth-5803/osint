@@ -71,13 +71,22 @@
         <div class="row-opts">
           <div>
             <span class="opt-title">Spice level</span>
-            <div class="seg" role="radiogroup" aria-label="Spice level">
+            <div class="seg seg-3" role="radiogroup" aria-label="Spice level">
               <input type="radio" name="spice" id="sp-w" value="wholesome"><label for="sp-w">😇 Wholesome</label>
               <input type="radio" name="spice" id="sp-s" value="spicy" checked><label for="sp-s">🌶️ Spicy</label>
               <input type="radio" name="spice" id="sp-n" value="nuclear"><label for="sp-n">☢️ Nuclear</label>
             </div>
           </div>
+          <div>
+            <span class="opt-title">Investigation depth</span>
+            <div class="seg seg-3" role="radiogroup" aria-label="Investigation depth">
+              <input type="radio" name="depth" id="dp-q" value="quick"><label for="dp-q">🔍 Quick Peek</label>
+              <input type="radio" name="depth" id="dp-s" value="standard" checked><label for="dp-s">🕵️ Stakeout</label>
+              <input type="radio" name="depth" id="dp-d" value="deep"><label for="dp-d">🧬 Full Forensics</label>
+            </div>
+          </div>
         </div>
+        <p class="depth-note" id="depth-note">Balanced. Sharp roasts, good speed.</p>
         <label class="toggle"><input type="checkbox" id="anon" checked> Hide real names from the AI (they come back in your report)</label>
       </div>
     </div>
