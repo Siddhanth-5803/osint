@@ -4,7 +4,7 @@ A funny, forensic roast of your group chats. Drop a WhatsApp, Telegram or Instag
 
 - **Free stats, instantly, on your device:** who talks most, reply speeds, night owls, conversation starters and killers, double-texters, deleted messages, heatmap, a who-talks-to-whom string board, favourite words and emojis, and badges.
 - **The AI interrogation:** mugshots with each person's real role, charges, "what they type vs what they mean", roasts and redeeming qualities. Then ships and beefs, the unsaid (tap to declassify), awards, a fix-it plan, exhibits, a timeline and a share card for stories.
-- **Five interrogators:** Agent Brandon (FBI), Sharma Aunty, Dr. Overthink, Gen-Z Bestie and Nature Documentary. Three spice levels: Wholesome, Spicy and Nuclear. Reports in English or Hinglish.
+- **Five interrogators:** Agent Brandon (FBI), Sharma Aunty, Dr. Overthink, Gen-Z Bestie and Nature Documentary. Three spice levels: Wholesome, Spicy and Nuclear. Reports are always in English, even for Hindi, Hinglish or Bengali chats.
 - **Payments ready, switched off:** ₹5 per raid through Razorpay when you turn it on. Your promo code gives unlimited free raids.
 
 ---

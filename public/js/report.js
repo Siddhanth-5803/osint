@@ -214,15 +214,24 @@ function webSvg(stats, cf) {
     return `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="#ff4e5b" stroke-width="${(1.2 + (w / maxW) * 7).toFixed(1)}" stroke-linecap="round" opacity="${(0.35 + (w / maxW) * 0.65).toFixed(2)}"/>`;
   }).join("");
   // Place AI labels along their string, nudging them to avoid other labels and the name tags.
-  const taken = people.map((p) => { const { x, y } = pos.get(p.name); const r = 18 + p.share * 40; return { x: x - 60, y: y - r - 4, w: 120, h: 2 * r + 30 }; });
+  const taken = people.flatMap((p) => {
+    const { x, y } = pos.get(p.name);
+    const r = 18 + p.share * 40;
+    const nameW = Math.min(14, p.name.length) * 8 + 8;
+    return [{ x: x - r, y: y - r, w: 2 * r, h: 2 * r }, { x: x - nameW / 2, y: y + r + 4, w: nameW, h: 20 }];
+  });
   const hit = (a) => taken.some((b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y);
   const labels = list.filter(([k]) => aiLabel.has(k)).map(([k]) => {
     const [a, b] = k.split("\u0000").map((n) => pos.get(n));
     const raw = aiLabel.get(k);
     const text = raw.length > 22 ? raw.slice(0, 21) + "…" : raw;
     const w = text.length * 7.4 + 16, h = 22;
-    for (const t of [0.5, 0.38, 0.62, 0.28, 0.72, 0.2, 0.8]) {
-      const mx = a.x + (b.x - a.x) * t, my = a.y + (b.y - a.y) * t;
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    const nx = -(b.y - a.y) / len, ny = (b.x - a.x) / len;
+    const spots = [];
+    for (const off of [0, 16, -16, 30, -30]) for (const t of [0.5, 0.38, 0.62, 0.28, 0.72]) spots.push([t, off]);
+    for (const [t, off] of spots) {
+      const mx = a.x + (b.x - a.x) * t + nx * off, my = a.y + (b.y - a.y) * t + ny * off;
       const rect = { x: mx - w / 2, y: my - h / 2, w, h };
       if (rect.x < 4 || rect.x + w > W - 4 || hit(rect)) continue;
       taken.push(rect);

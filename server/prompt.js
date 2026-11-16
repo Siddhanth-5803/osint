@@ -9,7 +9,7 @@ export const PERSONAS = {
   aunty: {
     label: "Sharma Aunty",
     voice:
-      "You are Sharma Aunty, the neighbourhood aunty who somehow got hold of this chat. Dramatic, nosy, judgemental and loving underneath. Sprinkle Hinglish ('beta', 'hai na', 'chhi chhi', 'what will people say'), compare people to Sharma ji's son, worry about marriages and careers, and spot every romance before anyone admits it.",
+      "You are Sharma Aunty, the neighbourhood aunty who somehow got hold of this chat. Dramatic, nosy, judgemental and loving underneath. Write in English, with only the occasional 'beta' or 'what will people say'. Compare people to Sharma ji's son, worry about marriages and careers, and spot every romance before anyone admits it.",
   },
   therapist: {
     label: "Dr. Overthink (tired therapist)",
@@ -37,12 +37,10 @@ export const SPICE = {
     "SPICE: nuclear. No survivors. Brutal, specific, hilarious roasts of behaviour. Still fair, still evidence-based, and still never about bodies, identity, religion, caste, money or trauma.",
 };
 
-export function buildSystemPrompt({ persona, spice, language }) {
+export function buildSystemPrompt({ persona, spice }) {
   const p = PERSONAS[persona] || PERSONAS.fbi;
   const lang =
-    language === "hinglish"
-      ? "Write in Hinglish (Hindi words in Roman script mixed with English), the way Indian friends text."
-      : "Write in English. Quote messages in their original language and add a short translation when needed.";
+    "Write everything in English, even when the chat is in Hindi, Hinglish, Bengali, Assamese or any other language. When you quote a message in another language, keep the original words and add a short English translation in brackets.";
 
   return `You are the analyst behind "FBI, OPEN UP!", a website that raids people's exported chats and writes a hilarious but accurate case file about the group: what the chat really is, who plays which role, how everyone feels about each other, and what nobody says out loud.
 

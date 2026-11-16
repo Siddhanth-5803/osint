@@ -82,3 +82,20 @@ test("one-on-one interest meter", () => {
   const s = computeStats(parseWhatsApp(IOS));
   assert.ok(s.interest && s.interest.aScore + s.interest.bScore === 100);
 });
+
+test("iPhone system lines, calls and photo captions", () => {
+  const raw = [
+    "[27/10/26, 9:15:13 PM] Gang 🌿: ‎You created group “GANG”",
+    "‎[27/10/26, 9:15:13 PM] Ravi: ‎sticker omitted",
+    "[27/10/26, 9:16:00 PM] Ravi: ‎Video call, ‎‎2 min • ‎3 joined",
+    "[27/10/26, 9:17:00 PM] Mira: Look at this image omitted",
+    "[27/10/26, 9:18:00 PM] Mira: ‎Location: https://maps.google.com/?q=1,2",
+    "[27/10/26, 9:19:00 PM] Ravi: POLL:\nAdd her?\nOPTION: Yes (2 votes)",
+  ].join("\n");
+  const r = parseWhatsApp(raw);
+  assert.deepEqual(r.messages.map((m) => m.type), ["system", "media", "call", "text", "media", "text"]);
+  assert.equal(r.messages[0].author, null);
+  assert.equal(r.messages[3].text, "Look at this");
+  const s = computeStats(r);
+  assert.ok(!s.people.find((p) => p.name.includes("Gang")));
+});

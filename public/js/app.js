@@ -29,7 +29,6 @@ function toast(msg, ms = 2600) {
 const settings = () => ({
   persona: document.querySelector('input[name="persona"]:checked')?.value || "fbi",
   spice: document.querySelector('input[name="spice"]:checked')?.value || "spicy",
-  language: document.querySelector('input[name="lang"]:checked')?.value || "english",
   anon: $("#anon").checked,
 });
 function saveSettings() { store.set("settings", settings()); }
@@ -48,9 +47,8 @@ function buildPersonas() {
 <div class="persona"><input type="radio" name="persona" id="pe-${k}" value="${k}" ${(saved.persona || "fbi") === k ? "checked" : ""}>
 <label for="pe-${k}"><b>${emo}</b><span>${name}</span><small>${desc}</small></label></div>`).join("");
   if (saved.spice) { const el = document.querySelector(`input[name="spice"][value="${saved.spice}"]`); if (el) el.checked = true; }
-  if (saved.language) { const el = document.querySelector(`input[name="lang"][value="${saved.language}"]`); if (el) el.checked = true; }
   if (typeof saved.anon === "boolean") $("#anon").checked = saved.anon;
-  document.querySelectorAll('input[name="persona"],input[name="spice"],input[name="lang"],#anon').forEach((el) => el.addEventListener("change", saveSettings));
+  document.querySelectorAll('input[name="persona"],input[name="spice"],#anon').forEach((el) => el.addEventListener("change", saveSettings));
 }
 
 function priceLabel() {
@@ -77,7 +75,12 @@ async function readFiles(fileList) {
       if (!window.JSZip) throw new Error("Couldn't load the zip reader. Check your internet, or unzip the file and drop the .txt instead.");
       const zip = await window.JSZip.loadAsync(f);
       const entries = Object.values(zip.files).filter((e) => !e.dir && /\.(txt|json)$/i.test(e.name) && !/__MACOSX/.test(e.name));
-      for (const e of entries) out.push({ name: e.name.split("/").pop(), text: await e.async("string") });
+      for (const e of entries) {
+        let name = e.name.split("/").pop();
+        // iPhone zips call the chat "_chat.txt"; the zip's own name has the chat title.
+        if (/^_chat\.txt$/i.test(name)) name = f.name.replace(/\.zip$/i, ".txt");
+        out.push({ name, text: await e.async("string") });
+      }
     } else if (/\.(txt|json)$/i.test(f.name)) {
       out.push({ name: f.name, text: await f.text() });
     }
@@ -146,7 +149,7 @@ function renderInterrogateCard(errorMsg = "") {
   <div>
     <h2>🚨 Bring them in for questioning</h2>
     <p>The stats below are free. The interrogation reads the messages and writes mugshots, ships &amp; beefs, the unsaid, awards and a fix-it plan.</p>
-    <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span><span class="chip m">${s.language === "hinglish" ? "Hinglish" : "English"}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
+    <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
     <p class="note">${esc(priceNote)}</p>
     ${errorMsg ? `<p class="note" style="color:#ffb3b9">⚠️ ${esc(errorMsg)}</p>` : ""}
   </div>
@@ -198,7 +201,7 @@ async function startInterrogation(payment = null) {
     const transcript = buildTranscript(state.chat, state.stats, { anon });
     const stats = statsForAi(state.stats, anon ? anon.name : (n) => n);
     setStep(2);
-    const res = await api("/api/analyze", { stats, transcript, persona: s.persona, spice: s.spice, language: s.language, promo: promo || undefined, payment: payment || undefined });
+    const res = await api("/api/analyze", { stats, transcript, persona: s.persona, spice: s.spice, promo: promo || undefined, payment: payment || undefined });
     setStep(3); await sleep(400);
     let cf = res.caseFile;
     if (anon) cf = restoreDeep(cf, anon.restore);

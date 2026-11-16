@@ -62,7 +62,7 @@ function publicConfig(ip) {
     freeDailyLimit: config.freeDailyLimit,
     freeUsesLeft: freeUsesLeft(ip),
     razorpayEnabled: config.razorpayEnabled,
-    aiReady: config.anthropicKeySet || config.mockAi,
+    aiReady: config.anthropicKeySet || config.mockAi || Boolean(config.mockAiFile),
     mockAi: config.mockAi,
     personas: Object.fromEntries(Object.entries(PERSONAS).map(([k, v]) => [k, v.label])),
   };
@@ -86,20 +86,20 @@ async function handleApi(req, res, url) {
 
   if (req.method === "POST" && url.pathname === "/api/analyze") {
     const body = await readJson(req);
-    const { stats, transcript, persona = "fbi", spice = "spicy", language = "english", promo, payment } = body;
+    const { stats, transcript, persona = "fbi", spice = "spicy", promo, payment } = body;
     if (!stats || typeof stats !== "object" || typeof transcript !== "string" || transcript.length < 20) {
       return send(res, 400, { error: "No chat found in the request." });
     }
     if (transcript.length > 450_000) return send(res, 413, { error: "Transcript sample is too large." });
-    if (!PERSONAS[persona] || !SPICE[spice] || !["english", "hinglish"].includes(language)) {
-      return send(res, 400, { error: "Unknown persona, spice or language." });
+    if (!PERSONAS[persona] || !SPICE[spice]) {
+      return send(res, 400, { error: "Unknown persona or spice level." });
     }
     if (promo && !promoAttemptAllowed(ip)) return send(res, 429, { error: "Too many promo tries. Wait an hour." });
 
     const access = checkAccess({ ip, promo, payment });
     if (!access.ok) return send(res, access.status, { error: access.reason, needs: config.accessMode });
 
-    const result = await analyzeChat({ stats, transcript, persona, spice, language });
+    const result = await analyzeChat({ stats, transcript, persona, spice });
     if (access.kind === "free") recordFreeUse(ip);
     if (access.kind === "paid") markOrderUsed(payment.orderId);
     console.log(`[raid] ${new Date().toISOString()} kind=${access.kind} model=${result.model} in=${result.usage?.input_tokens ?? "-"} out=${result.usage?.output_tokens ?? "-"}`);

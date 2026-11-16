@@ -11,7 +11,7 @@ const LAUGH_RE = /(?:\b(?:ha){2,}h?\b|\bhe(?:he)+\b|\blo+l+\b|\blmf?ao+\b|\brofl
 const URL_RE = /https?:\/\/\S+/g;
 
 const STOP = new Set(`the and you that this for with are was have not but what all were when your can said there use each which she how their will other about out many then them these some her would make like him into time has look two more write see number way could people than first water been call who its now find long down day did get come made may part just yeah yes okay haha lol hmm also its it's i'm im dont don't thats that's know what's gonna wanna really very much too here why where they them our ours from got one going will would should could well even still only back over after before because being doing does done thing things let lets message deleted media omitted null http https www com
-hai hain nahi nhi kya kyu kyun toh bhi aur yaar bhai mein main tum aap hum ham koi kuch abhi accha acha theek thik haan han nahin kar karo karna kiya kiye raha rahi rahe tha thi the hoga hogi gaya gayi apna apni mera meri tera teri uska uski unka unki yeh woh wo ye vo bas phir fir sab kab jab tab kaise kaisa kaun matlab wala wali wale lekin par pe ko se ka ki ke na`.split(/\s+/));
+hai hain nahi nhi kya kyu kyun toh bhi aur yaar bhai mein main tum aap hum ham koi kuch abhi accha acha theek thik haan han nahin kar karo karna kiya kiye raha rahi rahe tha thi the hoga hogi gaya gayi mai mere mujhe mereko tujhe tere rha rhi rhe gya gyi gye diya kal pata yaha waha kaha arre are haa hmm hmn okk oky achha aacha bohot bahut aaj krna kr bat baat mae hae hu hoon bhyi bhai bhaii bol bolo boli bola please yar yrr yaar beh nhi kiya kyu hua hui hue lena dena jana aana raha rahe ghr ghar abhi ab fir phir ky jo apna apni mera meri tera teri uska uski unka unki yeh woh wo ye vo bas phir fir sab kab jab tab kaise kaisa kaun matlab wala wali wale lekin par pe ko se ka ki ke na`.split(/\s+/));
 
 const pad = (n) => String(n).padStart(2, "0");
 const fmtDate = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
@@ -37,7 +37,9 @@ export function humanDuration(ms) {
 }
 
 export function computeStats(chat) {
-  const msgs = chat.messages.filter((m) => m.author && m.type !== "system");
+  const msgs = chat.messages.filter((m) => m.author && m.type !== "system" && m.type !== "call");
+  const callsBy = new Map();
+  for (const m of chat.messages) if (m.type === "call") callsBy.set(m.author, (callsBy.get(m.author) || 0) + 1);
   const P = new Map();
   const person = (name) => {
     if (!P.has(name)) P.set(name, {
@@ -140,6 +142,7 @@ export function computeStats(chat) {
     unansweredRate: p.messages ? p.unanswered / p.messages : 0,
     topEmojis: top(p.emojiMap, 5).map(([e]) => e),
     topWords: top(p.wordMap, 6).map(([w]) => w),
+    calls: callsBy.get(p.name) || 0,
   }));
 
   const pairList = [...pairs.values()].map((x) => ({
@@ -172,6 +175,7 @@ export function computeStats(chat) {
     silences: gaps.sort((a, b) => b.ms - a.ms).slice(0, 3).map((g) => ({ ms: g.ms, from: fmtDate(g.from), to: fmtDate(g.to), brokenBy: g.broke })),
     topWords: top(groupWords, 18).map(([w, c]) => ({ w, c })),
     topEmojis: top(groupEmoji, 10).map(([e, c]) => ({ e, c })),
+    totalCalls: [...callsBy.values()].reduce((a, b) => a + b, 0),
   };
   stats.badges = assignBadges(stats);
   if (people.length === 2) stats.interest = interestMeter(stats);
@@ -240,7 +244,7 @@ export function statsForAi(stats, rename = (n) => n) {
       name: rename(p.name), messages: p.messages, share: r2(p.share), avg_words: r2(p.avgWords), media: p.media, deleted: p.deleted,
       question_rate: r2(p.questionRate), emoji_rate: r2(p.emojiRate), laugh_rate: r2(p.laughRate), night_rate: r2(p.nightRate),
       convo_starts: p.starts, convo_ends: p.ends, double_text_rate: r2(p.doubleTextRate), median_reply: humanDuration(p.medianReply),
-      left_on_read_rate: r2(p.unansweredRate), top_emojis: p.topEmojis, top_words: p.topWords,
+      left_on_read_rate: r2(p.unansweredRate), calls_started: p.calls, top_emojis: p.topEmojis, top_words: p.topWords,
     })),
     pairs: stats.pairs.slice(0, 30).map((x) => ({
       replier: rename(x.to), replying_to: rename(x.from), quick_replies: x.quick, replies: x.replies,
@@ -294,7 +298,7 @@ const scrub = (t) => t.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "<email>").replace(/\
 
 // Picks a representative sample of the chat that fits the budget (characters).
 export function buildTranscript(chat, stats, { anon = null, budget = 150_000 } = {}) {
-  const msgs = chat.messages.filter((m) => m.author && m.type !== "system");
+  const msgs = chat.messages.filter((m) => m.author && m.type !== "system" && m.type !== "call");
   const line = (m) => {
     const who = anon ? anon.name(m.author) : m.author;
     let body = m.type === "media" ? "<media>" : m.type === "deleted" ? "<deleted message>" : scrub(m.text).slice(0, 500).replace(/\n/g, " / ");

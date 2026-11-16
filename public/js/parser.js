@@ -1,13 +1,15 @@
 // Chat export parsers. Pure functions: they run in the browser and in Node tests.
 // Every parser returns { source, title, messages: [{ i, ts, author, text, type }] }
-// type is one of: text | media | deleted | system
+// type is one of: text | media | deleted | call | system
 
 const INVISIBLE = /[‎‏‪-‮⁦-⁩﻿]/g;
 const SPACES = /[   ]/g;
 
-const MEDIA_RE = /^(<media omitted>|<attached: [^>]+>|(image|video|audio|sticker|gif|document|contact card|voice message) omitted|null)$/i;
+const MEDIA_RE = /^(<media omitted>|<attached: [^>]+>|(image|video|audio|sticker|gif|document|contact card|voice message|video note) omitted|location: https?:\/\/\S+|null)$/i;
+const CALL_RE = /^(missed )?(voice|video|group) call\b/i;
 const DELETED_RE = /^(this message was deleted\.?|you deleted this message\.?|message deleted)$/i;
 const EDITED_RE = /\s*<this message was edited>$/i;
+const CAPTION_MEDIA_RE = /\s+(image|video|gif|sticker|audio|document) omitted$/i;
 
 // [12/03/26, 9:14:05 PM] Name: text    or    12/03/2026, 21:14 - Name: text
 const WA_LINE =
@@ -20,13 +22,16 @@ export function parseWhatsApp(raw, title = "WhatsApp chat") {
 
   for (const original of lines) {
     const line = original.replace(INVISIBLE, "").replace(SPACES, " ");
+    // iPhone exports mark system lines and attachments with an invisible U+200E right after "Name: "
+    const ci = original.indexOf(": ");
+    const lrm = ci >= 0 && original[ci + 2] === "\u200e";
     const m = line.match(WA_LINE);
     if (m && line.trimStart().length === line.length) {
       const [, p1, p2, p3, hh, mm, ss, ampm, rest] = m;
       firstMax = Math.max(firstMax, +p1);
       secondMax = Math.max(secondMax, +p2);
       if (p1.length === 4) yearFirst = true;
-      entries.push({ p1: +p1, p2: +p2, p3: +p3, p1len: p1.length, hh: +hh, mm: +mm, ss: +(ss || 0), ampm, rest });
+      entries.push({ p1: +p1, p2: +p2, p3: +p3, p1len: p1.length, hh: +hh, mm: +mm, ss: +(ss || 0), ampm, rest, lrm });
     } else if (entries.length) {
       entries[entries.length - 1].rest += "\n" + line;
     }
@@ -60,9 +65,15 @@ export function parseWhatsApp(raw, title = "WhatsApp chat") {
     }
     const author = am[1].replace(/^~\s*/, "").trim();
     let text = am[2].replace(EDITED_RE, "").trim();
+    if (CAPTION_MEDIA_RE.test(text) && !MEDIA_RE.test(text)) text = text.replace(CAPTION_MEDIA_RE, "").trim();
     let type = "text";
     if (MEDIA_RE.test(text) || /\.(jpg|jpeg|png|webp|opus|mp4|pdf|vcf) \(file attached\)$/i.test(text)) type = "media";
     else if (DELETED_RE.test(text)) type = "deleted";
+    else if (CALL_RE.test(text) && (e.lrm || text.length < 60)) type = "call";
+    else if (e.lrm && !/^poll:/i.test(text) && !/^open this link/i.test(text)) {
+      messages.push({ ts, author: null, text, type: "system" });
+      continue;
+    }
     messages.push({ ts, author, text, type });
   }
   return finish("whatsapp", title, messages);

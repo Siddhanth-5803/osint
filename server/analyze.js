@@ -1,4 +1,5 @@
 // Calls Claude and returns the parsed case file.
+import fs from "node:fs";
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config.js";
 import { buildSystemPrompt, buildUserMessage, CASE_SCHEMA } from "./prompt.js";
@@ -16,7 +17,8 @@ export class AnalysisError extends Error {
   }
 }
 
-export async function analyzeChat({ stats, transcript, persona, spice, language }) {
+export async function analyzeChat({ stats, transcript, persona, spice }) {
+  if (config.mockAiFile) return { caseFile: JSON.parse(fs.readFileSync(config.mockAiFile, "utf8")), model: "mock-file" };
   if (config.mockAi) return mockCase(stats);
   if (!config.anthropicKeySet) {
     throw new AnalysisError("The server has no Anthropic API key yet. Add ANTHROPIC_API_KEY to .env and restart.", 503);
@@ -25,7 +27,7 @@ export async function analyzeChat({ stats, transcript, persona, spice, language 
   const params = {
     model: config.model,
     max_tokens: 16000,
-    system: buildSystemPrompt({ persona, spice, language }),
+    system: buildSystemPrompt({ persona, spice }),
     messages: [{ role: "user", content: buildUserMessage({ stats, transcript }) }],
     output_config: { effort: config.effort, format: { type: "json_schema", schema: CASE_SCHEMA } },
   };

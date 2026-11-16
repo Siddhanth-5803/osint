@@ -53,6 +53,8 @@ export const config = {
 
   // Testing only: return a canned roast instead of calling Claude.
   mockAi: env.MOCK_AI === "1",
+  // Testing only: return this saved case-file JSON instead of calling Claude.
+  mockAiFile: env.MOCK_AI_FILE || "",
 };
 
 config.razorpayEnabled = Boolean(config.razorpayKeyId && config.razorpayKeySecret);
