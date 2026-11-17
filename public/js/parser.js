@@ -154,7 +154,8 @@ export function parseFiles(files) {
       } catch { /* ignore broken json */ }
     }
   }
-  const tg = jsons.find((j) => Array.isArray(j.data?.messages) && j.data.messages[0]?.date !== undefined || j.data?.chats?.list);
+  const isTg = (d) => Array.isArray(d?.messages) && (d.messages[0]?.date !== undefined || d.messages[0]?.date_unixtime !== undefined) || Boolean(d?.chats?.list);
+  const tg = jsons.find((j) => isTg(j.data));
   if (tg) {
     const r = parseTelegram(tg.data);
     if (r?.messages.length) return r;

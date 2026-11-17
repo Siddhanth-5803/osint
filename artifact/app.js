@@ -1,8 +1,10 @@
 // FBI, OPEN UP! — one-click version. Runs entirely in the page; the AI
 // investigation asks Claude through the viewer's own Claude account
 // (the artifact `sample` capability), so there is no server and no key.
+import { readUploads, parseUploads, addToBag, pickMain, prepareEvidence } from "../public/js/evidence.js";
+import { bagHtml, bindBag } from "../public/js/bag.js";
 import { parseFiles } from "../public/js/parser.js";
-import { computeStats, statsForAi, buildTranscript, makeNameMap, restoreDeep, scrub } from "../public/js/stats.js";
+import { computeStats, restoreDeep, scrub } from "../public/js/stats.js";
 import { renderCase, renderStats, roastText, esc } from "../public/js/report.js";
 import { makeShareCard } from "../public/js/share.js";
 import { SAMPLE_CHAT_TEXT, SAMPLE_CASE, SAMPLE_TITLE } from "../public/js/sample.js";
@@ -36,7 +38,7 @@ const LINES = {
 };
 
 // ai: "checking" until the viewer answers, then "ready" or "off"
-const state = { asker: {}, owner: false, unavailableDepths: new Set(), chat: null, stats: null, caseFile: null, isSample: false, busy: false, ai: "checking", aiOffReason: "", sample: null, downloads: null, ctl: null };
+const state = { bag: [], mainId: null, userAliases: {}, asker: {}, owner: false, unavailableDepths: new Set(), chat: null, stats: null, caseFile: null, isSample: false, busy: false, ai: "checking", aiOffReason: "", sample: null, downloads: null, ctl: null };
 
 // ---------- helpers ----------
 function toast(msg, ms = 2800) {
@@ -115,67 +117,113 @@ function aiLabel() {
 }
 
 // ---------- file handling ----------
-async function readFiles(fileList) {
-  const out = [];
-  for (const f of fileList) {
-    if (/\.zip$/i.test(f.name) || f.type === "application/zip") {
-      if (!window.JSZip) throw new Error("Couldn't load the zip reader. Unzip the file and drop the .txt instead.");
-      let zip;
-      try { zip = await window.JSZip.loadAsync(f); }
-      catch { throw new Error("That zip file couldn't be opened. Export the chat again, or unzip it and drop the .txt inside."); }
-      const entries = Object.values(zip.files).filter((e) => !e.dir && /\.(txt|json)$/i.test(e.name) && !/__MACOSX/.test(e.name));
-      for (const e of entries) {
-        let name = e.name.split("/").pop();
-        if (/^_chat\.txt$/i.test(name)) name = f.name.replace(/\.zip$/i, ".txt");
-        out.push({ name, text: await e.async("string") });
-      }
-    } else if (/\.(txt|json)$/i.test(f.name)) {
-      out.push({ name: f.name, text: await f.text() });
-    }
-  }
-  if (!out.length) throw new Error("That file doesn't look like a chat export. Drop a .zip, .txt or .json.");
-  return out;
-}
-
+// Drop one chat, or several exports from different apps at once. The biggest becomes the main chat.
 async function handleFiles(fileList) {
   if (!fileList?.length || state.busy) return;
   try {
     showOverlay("Seizing evidence…", ["Opening the evidence bag", "Dusting for fingerprints", "Building the rap sheet"]);
     setStep(0);
-    const files = await readFiles(fileList);
+    const { groups, errors } = await readUploads(fileList, window.JSZip);
     setStep(1); await tick();
-    const chat = parseFiles(files);
-    const stats = computeStats(chat);
-    if (stats.totalMessages < 10 || stats.people.length < 2) throw new Error("This chat is too small to investigate. We need at least 10 messages from 2 people.");
+    const { items, errors: more } = parseUploads(groups);
+    const problems = [...errors, ...more];
+    if (!items.length) throw new Error(problems.join(" · ") || "That doesn't look like a chat export. Drop a .zip, .txt or .json.");
     setStep(2); await sleep(400);
-    openReport(chat, stats, false);
+    const { bag, notes } = addToBag([], items);
+    openReport(bag, false);
+    const skipped = [...problems, ...notes];
+    if (skipped.length) toast(`Skipped: ${skipped.join(" · ")}`, 7000);
   } catch (err) {
-    toast(err.message || "Something went wrong reading that file.", 5000);
+    toast(err.message || "Something went wrong reading that file.", 6000);
   } finally {
     hideOverlay();
   }
 }
 
+// Adds more chats (other apps) to the bag as optional context.
+async function addMore(fileList) {
+  if (state.busy || !fileList?.length) return;
+  showOverlay("Adding evidence…", ["Opening the files", "Reading the chats"]);
+  try {
+    setStep(0);
+    const { groups, errors } = await readUploads(fileList, window.JSZip);
+    setStep(1); await tick();
+    const { items, errors: more } = parseUploads(groups);
+    const { bag, notes } = addToBag(state.bag, items);
+    const added = bag.length - state.bag.length;
+    state.bag = bag;
+    const problems = [...errors, ...more, ...notes];
+    toast(added ? `Added ${added} chat${added > 1 ? "s" : ""} to the bag.${problems.length ? ` Skipped: ${problems.join(" · ")}` : ""}` : problems.join(" · ") || "Nothing new to add.", 7000);
+    renderInterrogateCard();
+  } catch (err) {
+    console.error(err);
+    toast("Couldn't add that file. Try exporting it again.", 5000);
+  } finally {
+    hideOverlay();
+  }
+}
+
+function removeFromBag(id) {
+  if (state.bag.length <= 1) return;
+  state.bag = state.bag.filter((b) => b.id !== id);
+  if (state.mainId === id) { state.mainId = pickMain(state.bag); state.asker = {}; state.userAliases = {}; applyMain(); }
+  renderInterrogateCard();
+}
+
+function setMain(id) {
+  if (id === state.mainId || !state.bag.some((b) => b.id === id)) return;
+  state.mainId = id; state.asker = {}; state.userAliases = {};
+  applyMain();
+  renderInterrogateCard();
+}
+
 function loadSample() {
   const chat = parseFiles([{ name: `WhatsApp Chat with ${SAMPLE_TITLE}.txt`, text: SAMPLE_CHAT_TEXT }]);
-  openReport(chat, computeStats(chat), true);
+  openReport([{ id: "sample", label: SAMPLE_TITLE, chat, stats: computeStats(chat) }], true);
 }
 
 // ---------- report ----------
-function openReport(chat, stats, isSample) {
-  Object.assign(state, { chat, stats, caseFile: null, isSample, asker: {}, ranDepth: null });
+function metaText(depthLabel = "") {
+  const m = state.stats;
+  const ctx = state.isSample ? 0 : state.bag.length - 1;
+  return [`${m.totalMessages.toLocaleString()} messages`, `${m.people.length} suspects`, depthLabel || state.chat.source, ctx ? `+${ctx} context` : ""].filter(Boolean).join(" · ");
+}
+
+// Makes the chosen main chat the one the report is about.
+function applyMain() {
+  const m = state.bag.find((b) => b.id === state.mainId) || state.bag[0];
+  state.mainId = m.id; state.chat = m.chat; state.stats = m.stats;
+  $("#case-title").textContent = `Case: ${m.chat.title}`;
+  caseBar.setTitle(`Case: ${m.chat.title}`);
+  $("#case-meta").textContent = metaText();
+  $("#stats-sections").innerHTML = renderStats(state.stats);
+  buildJump();
+}
+
+function openReport(bag, isSample) {
+  Object.assign(state, { bag, mainId: pickMain(bag), userAliases: {}, caseFile: null, isSample, asker: {}, ranDepth: null });
+  applyMain();
   $("#landing").hidden = true;
   $("#report").hidden = false;
   $("#share-btn").hidden = true;
-  $("#case-title").textContent = `Case: ${chat.title}`;
-  caseBar.setTitle(`Case: ${chat.title}`);
-  $("#case-meta").textContent = `${stats.totalMessages.toLocaleString()} messages · ${stats.people.length} suspects · ${chat.source}`;
   $("#ai-sections").innerHTML = "";
   renderInterrogateCard();
-  $("#stats-sections").innerHTML = renderStats(stats);
   buildJump();
   caseBar.reset();
   window.scrollTo({ top: 0 });
+}
+
+// Back to the investigation card (keeping the bag) so more chats can be added and the case re-run.
+function investigateAgain() {
+  state.caseFile = null; state.ranDepth = null;
+  $("#ai-sections").innerHTML = "";
+  $("#share-btn").hidden = true;
+  $("#case-meta").textContent = metaText();
+  $("#stats-sections").innerHTML = renderStats(state.stats);
+  renderInterrogateCard();
+  buildJump();
+  caseBar.reset();
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function renderInterrogateCard(errorMsg = "") {
@@ -194,6 +242,7 @@ function renderInterrogateCard(errorMsg = "") {
     <h2>🚨 Send in the investigator</h2>
     <p>Your investigator reads the messages and writes their speciality report, plus mugshots, ships &amp; beefs, the unsaid, awards and a fix-it plan.</p>
     <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span><span class="chip m">${DEPTHS[s.depth].emoji} ${DEPTHS[s.depth].label}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
+    ${state.isSample ? "" : bagHtml({ bag: state.bag, mainId: state.mainId, userAliases: state.userAliases })}
     ${state.isSample ? "" : askerHtml(state.stats.people, state.asker)}
     <p class="note">${esc(note)}</p>
     ${errorMsg ? `<p class="note" style="color:#ffb3b9">⚠️ ${esc(errorMsg)}</p>` : ""}
@@ -205,6 +254,12 @@ function renderInterrogateCard(errorMsg = "") {
 </div>`;
   $("#go").addEventListener("click", () => startInvestigation());
   // Keep what the viewer typed if the card is redrawn (for example after an error).
+  bindBag($("#interrogate-wrap"), {
+    onAdd: addMore,
+    onRemove: removeFromBag,
+    onMain: setMain,
+    onAlias: (name, choice) => { state.userAliases[name] = choice; },
+  });
   const keep = () => { state.asker = readAsker(); };
   $("#asker-me")?.addEventListener("change", keep);
   $("#asker-note")?.addEventListener("input", keep);
@@ -236,15 +291,14 @@ function goLanding() {
 const MAX_BYTES = 240_000;
 const bytes = (s) => new TextEncoder().encode(s).length;
 
-function buildPrompt(s, anon, budget, asker) {
-  const transcript = buildTranscript(state.chat, state.stats, { anon, budget });
-  const stats = statsForAi(state.stats, anon ? anon.name : (n) => n);
+function buildPrompt(s, ev, asker) {
+  const anon = ev.anon;
   const askerBlock = buildAskerBlock({
     me: asker.me ? (anon ? anon.name(asker.me) : asker.me) : "",
     outsider: asker.outsider,
     note: asker.note ? (anon ? anon.text(scrub(asker.note)) : scrub(asker.note)) : "",
   });
-  return `${buildSystemPrompt({ persona: s.persona, spice: s.spice })}
+  return `${buildSystemPrompt({ persona: s.persona, spice: s.spice, hasContext: ev.contexts.length > 0 })}
 
 ${DEPTH_HINT[s.depth]}
 
@@ -254,7 +308,7 @@ FORMAT
 Reply with only one JSON object, no other text, matching this JSON Schema exactly (every property is required):
 ${JSON.stringify(CASE_SCHEMA)}
 
-${buildUserMessage({ stats, transcript })}`;
+${buildUserMessage({ stats: ev.mainStats, transcript: ev.mainTranscript, contexts: ev.contexts })}`;
 }
 
 const ERROR_COPY = {
@@ -279,12 +333,13 @@ async function startInvestigation() {
   showOverlay("FBI, OPEN UP!", ["Hiding real names", "Waiting for Claude (it asks your permission the first time)", "Interrogating suspects", "Writing the case file"], LINES[s.persona], true);
   try {
     setStep(0); await tick();
-    const anon = s.anon ? makeNameMap(state.stats.people) : null;
     if (s.depth === "secret" && !state.owner) s.depth = "deep";
     const asker = readAsker();
     state.asker = asker;
-    let budget = DEPTH_BUDGET[s.depth], prompt = buildPrompt(s, anon, budget, asker);
-    while (bytes(prompt) > MAX_BYTES && budget > 20_000) { budget = Math.floor(budget * 0.75); prompt = buildPrompt(s, anon, budget, asker); }
+    const prepare = (b) => prepareEvidence({ bag: state.bag, mainId: state.mainId, userAliases: state.userAliases, hide: s.anon, budget: b });
+    let budget = DEPTH_BUDGET[s.depth], ev = prepare(budget), prompt = buildPrompt(s, ev, asker);
+    while (bytes(prompt) > MAX_BYTES && budget > 20_000) { budget = Math.floor(budget * 0.75); ev = prepare(budget); prompt = buildPrompt(s, ev, asker); }
+    const anon = ev.anon;
     setStep(1);
     let started = false;
     const want = DEPTHS[s.depth];
@@ -336,7 +391,7 @@ async function runSample(s) {
 function showCase(cf) {
   state.caseFile = cf;
   const d = state.isSample ? null : DEPTHS[state.ranDepth];
-  if (d) $("#case-meta").textContent = `${state.stats.totalMessages.toLocaleString()} messages · ${state.stats.people.length} suspects · ${d.emoji} ${d.label}`;
+  if (d) $("#case-meta").textContent = metaText(`${d.emoji} ${d.label}`);
   $("#interrogate-wrap").innerHTML = "";
   $("#ai-sections").innerHTML = renderCase(cf, state.stats, { chat: state.chat, me: state.isSample ? "" : state.asker.me });
   $("#stats-sections").innerHTML = renderStats(state.stats, cf);
@@ -421,6 +476,7 @@ function bind() {
     if (tr) { tr.classList.toggle("open"); tr.setAttribute("aria-expanded", tr.classList.contains("open")); return; }
     const act = e.target.closest("[data-action]")?.dataset.action;
     if (act === "share") doShare();
+    if (act === "again") investigateAgain();
     if (act === "copy" && state.caseFile) {
       try { await navigator.clipboard.writeText(roastText(state.caseFile)); toast("📋 Roast copied. Go cause problems."); }
       catch { toast("Couldn't copy here. Use the share card instead."); }

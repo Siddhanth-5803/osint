@@ -261,7 +261,8 @@ export function statsForAi(stats, rename = (n) => n) {
 }
 
 // Anonymiser: names -> "Suspect A", "Suspect B"... and back again.
-export function makeNameMap(people) {
+// aliases: { "Mimi": "Meera" } means the person called Mimi in another chat is the same suspect as Meera.
+export function makeNameMap(people, aliases = {}) {
   const forward = new Map();
   const back = new Map();
   people.forEach((p, i) => {
@@ -269,13 +270,15 @@ export function makeNameMap(people) {
     forward.set(p.name, `Suspect ${code}`);
     back.set(`Suspect ${code}`, p.name);
   });
+  for (const [alt, canon] of Object.entries(aliases)) if (!forward.has(alt) && forward.has(canon)) forward.set(alt, forward.get(canon));
   const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // Replace full names and first names (3+ letters) inside message text too.
   const variants = [];
   for (const [name, code] of forward) {
     variants.push([name, code]);
     const firstName = name.split(/\s+/)[0];
-    if (firstName.length >= 3 && firstName !== name && !people.some((p) => p.name !== name && p.name.split(/\s+/)[0] === firstName)) variants.push([firstName, code]);
+    const taken = [...forward.keys()].some((k) => k !== name && forward.get(k) !== code && k.split(/\s+/)[0] === firstName);
+    if (firstName.length >= 3 && firstName !== name && !taken) variants.push([firstName, code]);
   }
   variants.sort((a, b) => b[0].length - a[0].length);
   const textRe = variants.length ? new RegExp(`(?<![\\p{L}\\p{N}])(${variants.map(([v]) => escape(v)).join("|")})(?![\\p{L}\\p{N}])`, "giu") : null;
@@ -297,13 +300,14 @@ export function restoreDeep(value, restore) {
 export const scrub = (t) => t.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "<email>").replace(/\+?\d[\d\s-]{8,}\d/g, "<number>");
 
 // Picks a representative sample of the chat that fits the budget (characters).
-export function buildTranscript(chat, stats, { anon = null, budget = 150_000 } = {}) {
+// idPrefix: "B" gives ids like B#12, so lines from a context chat can't be mistaken for the main chat's #12.
+export function buildTranscript(chat, stats, { anon = null, budget = 150_000, idPrefix = "" } = {}) {
   const msgs = chat.messages.filter((m) => m.author && m.type !== "system" && m.type !== "call");
   const line = (m) => {
     const who = anon ? anon.name(m.author) : m.author;
     let body = m.type === "media" ? "<media>" : m.type === "deleted" ? "<deleted message>" : scrub(m.text).slice(0, 500).replace(/\n/g, " / ");
     if (anon && m.type === "text") body = anon.text(body);
-    return `#${m.i} [${fmtStamp(m.ts)}] ${who}: ${body}`;
+    return `${idPrefix}#${m.i} [${fmtStamp(m.ts)}] ${who}: ${body}`;
   };
   const lines = msgs.map(line);
   const n = lines.length;
@@ -338,4 +342,22 @@ export function buildTranscript(chat, stats, { anon = null, budget = 150_000 } =
   }
   if (skipped) out.push(`... [${skipped} messages skipped] ...`);
   return out.join("\n");
+}
+
+// A short summary of a context chat for the AI (the main chat gets the full statsForAi).
+export function contextSummary(stats, rename = (n) => n) {
+  const r2 = (x) => Math.round(x * 100) / 100;
+  return {
+    source: stats.source,
+    title: stats.title,
+    total_messages: stats.totalMessages,
+    range: stats.range,
+    people: stats.people.slice(0, 12).map((p) => ({
+      name: rename(p.name), messages: p.messages, share: r2(p.share), median_reply: humanDuration(p.medianReply),
+      night_rate: r2(p.nightRate), convo_starts: p.starts, double_text_rate: r2(p.doubleTextRate), top_emojis: p.topEmojis.slice(0, 3),
+    })),
+    closest_pairs: stats.pairs.slice(0, 4).map((x) => ({ replier: rename(x.to), replying_to: rename(x.from), quick_replies: x.quick, median_reply: humanDuration(x.medianReply) })),
+    peak_time: stats.peak,
+    longest_silences: stats.silences.slice(0, 2).map((x) => ({ from: x.from, to: x.to, length: humanDuration(x.ms) })),
+  };
 }

@@ -44,7 +44,9 @@ function receiptsHtml(list, chat) {
   if (!chat?.messages?.length || !Array.isArray(list) || !list.length) return "";
   const msgs = chat.messages;
   const byId = (id) => {
-    const n = parseInt(String(id ?? "").replace(/[^\d]/g, ""), 10);
+    // Only plain ids like "#12" or "12" belong to the main chat. Prefixed ones (B#12) come from context chats.
+    const m0 = String(id ?? "").trim().match(/^#?(\d{1,7})$/);
+    const n = m0 ? parseInt(m0[1], 10) : NaN;
     const m = Number.isFinite(n) ? msgs[n - 1] : null;
     return m && m.i === n && m.author ? m : null;
   };
@@ -245,7 +247,7 @@ export function renderCase(cf, stats, opts = {}) {
     <span class="label">Final verdict</span>
     <h2>${esc(cf.final_verdict)}</h2>
     <span class="stamp">GUILTY</span>
-    <div class="actions"><button class="btn primary" type="button" data-action="share">📸 Make share card</button><button class="btn" type="button" data-action="copy">📋 Copy the roast</button></div>
+    <div class="actions"><button class="btn primary" type="button" data-action="share">📸 Make share card</button><button class="btn" type="button" data-action="copy">📋 Copy the roast</button><button class="btn" type="button" data-action="again">🔁 Investigate again</button></div>
   </div>
 </section>`);
   return parts.join("");

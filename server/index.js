@@ -93,6 +93,14 @@ async function handleApi(req, res, url) {
       outsider: rawAsker?.outsider === true,
       note: typeof rawAsker?.note === "string" ? rawAsker.note.slice(0, 600) : "",
     };
+    // Optional extra chats (other apps) sent as context: at most 3, each capped in size.
+    const contexts = (Array.isArray(body.contexts) ? body.contexts : []).slice(0, 3).map((c, i) => ({
+      label: String.fromCharCode(66 + i),
+      source: typeof c?.source === "string" ? c.source.slice(0, 20) : "",
+      title: typeof c?.title === "string" ? c.title.slice(0, 120) : "",
+      stats: c?.stats && typeof c.stats === "object" && JSON.stringify(c.stats).length < 20_000 ? c.stats : {},
+      transcript: typeof c?.transcript === "string" ? c.transcript.slice(0, 160_000) : "",
+    })).filter((c) => c.transcript.length >= 20);
     if (!stats || typeof stats !== "object" || typeof transcript !== "string" || transcript.length < 20) {
       return send(res, 400, { error: "No chat found in the request." });
     }
@@ -106,7 +114,7 @@ async function handleApi(req, res, url) {
     const access = checkAccess({ ip, promo, payment });
     if (!access.ok) return send(res, access.status, { error: access.reason, needs: config.accessMode });
 
-    const result = await analyzeChat({ stats, transcript, persona, spice, depth, asker });
+    const result = await analyzeChat({ stats, transcript, persona, spice, depth, asker, contexts });
     if (access.kind === "free") recordFreeUse(ip);
     if (access.kind === "paid") markOrderUsed(payment.orderId);
     console.log(`[raid] ${new Date().toISOString()} kind=${access.kind} model=${result.model} in=${result.usage?.input_tokens ?? "-"} out=${result.usage?.output_tokens ?? "-"}`);

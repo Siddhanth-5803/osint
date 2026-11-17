@@ -426,3 +426,27 @@ td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 .asker textarea { min-height: 70px; resize: vertical; }
 .asker small { color: #c9d4f5; font-weight: 400; }
 .r-en { font-family: var(--f-mono); font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; background: var(--mint); color: var(--navy); border: 1.5px solid var(--navy); border-radius: 5px; padding: 0 5px; margin-right: 4px; vertical-align: 1px; }
+
+/* evidence bag (inside the dark interrogation card) */
+.ebag { display: grid; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 2px dashed rgba(255,255,255,.3); }
+.bag-head { display: grid; gap: 2px; color: #fff; }
+.bag-head small { color: #c9d4f5; }
+.bag-row { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.22); border-radius: 12px; padding: 8px 10px; min-width: 0; }
+.bag-row.is-main { border-color: var(--tape); background: rgba(255,210,63,.12); }
+.bag-pick { display: flex; gap: 6px; align-items: center; font-family: var(--f-mono); font-size: .72rem; color: var(--tape); cursor: pointer; white-space: nowrap; }
+.bag-pick input { width: 18px; height: 18px; accent-color: var(--tape); }
+.bag-tag { font-family: var(--f-mono); font-size: .72rem; color: var(--tape); white-space: nowrap; }
+.bag-name { display: grid; min-width: 0; color: #fff; }
+.bag-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bag-name small { color: #c9d4f5; font-family: var(--f-mono); font-size: .7rem; }
+.bag-x { border: 2px solid rgba(255,255,255,.4); background: transparent; color: #fff; border-radius: 8px; width: 32px; height: 32px; cursor: pointer; font-size: .9rem; }
+.bag-x:hover { background: var(--red); border-color: var(--red); }
+.bag-add { justify-self: start; }
+.bag-full { color: #c9d4f5; }
+.bag-alias { background: rgba(255,255,255,.06); border: 2px solid rgba(255,255,255,.2); color: #fff; }
+.bag-alias summary { color: #fff; font-size: .92rem; }
+.bag-auto { font-size: .85rem; color: #c9d4f5; margin-bottom: 8px; }
+.bag-alias-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 10px; align-items: center; margin-bottom: 8px; font-size: .9rem; }
+.bag-alias-row small { color: #c9d4f5; }
+.bag-alias-row select { font: inherit; color: var(--navy); background: var(--cloud); border: 2px solid var(--navy); border-radius: 10px; padding: 6px 8px; width: 100%; min-width: 0; }
+@media (max-width: 520px) { .bag-alias-row { grid-template-columns: 1fr; gap: 4px; } }
