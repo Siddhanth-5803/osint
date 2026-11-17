@@ -1,7 +1,7 @@
 // The evidence bag: one main chat plus optional context chats from other apps.
 // Shared by the website, the one-click page and the tests.
 import { parseFiles } from "./parser.js";
-import { computeStats, statsForAi, contextSummary, buildTranscript, makeNameMap, scrub } from "./stats.js";
+import { computeStats, statsForAi, contextSummary, buildTranscriptEx, makeNameMap, scrub } from "./stats.js";
 
 export const MAX_CONTEXT = 8; // extra chats on top of the main one (a group plus a private chat with each friend)
 export const NOT_SAME = "__not_same__"; // alias choice meaning "a different person"
@@ -87,13 +87,10 @@ export function addToBag(bag, items) {
   return { bag: out, notes };
 }
 
-// A group chat is the default main chat (private chats are then its context); otherwise the biggest chat.
+// Any chat can be the main one (a group or a private chat). The biggest is the default; the viewer can switch.
 export const isGroup = (it) => it.stats.people.length >= 3;
-export const pickMain = (items) => {
-  const groups = items.filter(isGroup);
-  const pool = groups.length ? groups : items;
-  return pool.reduce((best, it) => (!best || it.stats.totalMessages > best.stats.totalMessages ? it : best), null)?.id ?? null;
-};
+export const pickMain = (items) =>
+  items.reduce((best, it) => (!best || it.stats.totalMessages > best.stats.totalMessages ? it : best), null)?.id ?? null;
 
 // ---------- the same person on different apps ----------
 const norm = (s) => String(s || "").toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]/gu, "");
@@ -160,12 +157,28 @@ const safeTitle = (anon, t) => {
 
 // Builds everything the AI reads. hide=true swaps names for Suspect A, B, C across ALL chats,
 // and the same person gets the same code on every app.
-export function prepareEvidence({ bag, mainId, userAliases = {}, hide = true, budget }) {
+// all=true reads every message of every chat when it fits in `budget` (characters); if it doesn't,
+// each chat gets a fair share of the budget. all=false reads a sample sized by `budget`.
+// coverage tells exactly how much of each chat was included.
+export function prepareEvidence({ bag, mainId, userAliases = {}, hide = true, budget, all = false }) {
   const { main, aliases, people } = analysePeople(bag, mainId, userAliases);
   const contexts = bag.filter((b) => b !== main).slice(0, MAX_CONTEXT);
   const anon = hide ? makeNameMap(people, aliases) : null;
   const rename = anon ? anon.name : (n) => n;
-  const plan = planBudget(budget, contexts.length);
+  const maxMsg = all ? 1500 : 500;
+  const chats = [main, ...contexts];
+  const labels = ["", ...contexts.map((_, i) => String.fromCharCode(66 + i))]; // main has plain ids; B, C, D... for the rest
+  const build = (c, i, b) => buildTranscriptEx(c.chat, c.stats, { anon, budget: b, idPrefix: labels[i], all, maxMsg });
+
+  let parts;
+  if (all) {
+    const full = chats.map((c, i) => build(c, i, Infinity));
+    const total = full.reduce((n, f) => n + f.text.length, 0);
+    parts = total <= budget ? full : chats.map((c, i) => build(c, i, Math.max(3000, Math.floor((budget * full[i].text.length) / total))));
+  } else {
+    const plan = planBudget(budget, contexts.length);
+    parts = chats.map((c, i) => build(c, i, i === 0 ? plan.main : plan.each));
+  }
 
   const mainStats = statsForAi(main.stats, rename);
   mainStats.title = safeTitle(anon, main.stats.title);
@@ -174,20 +187,26 @@ export function prepareEvidence({ bag, mainId, userAliases = {}, hide = true, bu
     mainStats.group_top_words = (mainStats.group_top_words || []).map((w) => anon.text(w));
     for (const p of mainStats.people || []) p.top_words = (p.top_words || []).map((w) => anon.text(w));
   }
-  const mainTranscript = buildTranscript(main.chat, main.stats, { anon, budget: plan.main });
 
   const ctx = contexts.map((c, i) => {
-    const label = String.fromCharCode(66 + i); // B, C, D
     const summary = contextSummary(c.stats, rename);
     summary.title = safeTitle(anon, c.stats.title);
-    return {
-      label,
-      source: c.chat.source,
-      kind: isGroup(c) ? "group" : "private",
-      title: summary.title,
-      stats: summary,
-      transcript: buildTranscript(c.chat, c.stats, { anon, budget: plan.each, idPrefix: label }),
-    };
+    return { label: labels[i + 1], source: c.chat.source, kind: isGroup(c) ? "group" : "private", title: summary.title, stats: summary, transcript: parts[i + 1].text };
   });
-  return { anon, mainStats, mainTranscript, contexts: ctx };
+  const coverage = chats.map((c, i) => ({
+    label: labels[i],
+    title: c.chat.title,
+    included: parts[i].included,
+    total: parts[i].total,
+    pct: parts[i].total ? Math.round((parts[i].included / parts[i].total) * 100) : 100,
+  }));
+  return { anon, mainStats, mainTranscript: parts[0].text, contexts: ctx, coverage, fullyRead: coverage.every((c) => c.included >= c.total) };
+}
+
+// The chats by id prefix, the way the AI sees them: "" is the main chat, B, C, D... the context chats.
+export function chatMap(bag, mainId) {
+  const main = bag.find((b) => b.id === mainId) || bag[0];
+  const map = { "": main.chat };
+  bag.filter((b) => b !== main).slice(0, MAX_CONTEXT).forEach((b, i) => { map[String.fromCharCode(66 + i)] = b.chat; });
+  return map;
 }

@@ -6,7 +6,8 @@ A funny, forensic roast of your group chats. Drop a WhatsApp, Telegram or Instag
 - **The AI interrogation:** mugshots with each person's real role, charges, "what they type vs what they mean", roasts and redeeming qualities. Then ships and beefs, the unsaid (tap to declassify), awards, a fix-it plan, exhibits, a timeline and a share card for stories.
 - **Receipts under every mugshot:** each person's real messages and the replies they got, with English translations when the original is in Hindi, Hinglish, Bengali or anything else.
 - **Who's asking:** before the investigation you pick your own name in the chat (or "I'm not in this chat") and can leave the investigator a note, like who you are to them or who you like. The report then speaks to you and marks your mugshot.
-- **Several chats at once:** on the first screen, drop one chat or several together, then use "Drop more chats" to add others before you open the case. A group chat plus your private chat with each friend gives the investigator the best picture of the dynamics. Up to 9 chats. A group chat is the main chat by default (you can switch it), private chats are marked as private, and the same person on different apps is matched automatically or linked by you. One chat works exactly as before.
+- **Any chats, any number (up to 9):** on the first screen, drop one chat or several together (groups, private chats, other apps), then use "Drop more chats" to add others before you open the case. The biggest chat is the main one by default and you can switch it. Everything else gives the investigator context, and private chats are marked so it can compare how the same people behave one-on-one and in a group. The same person on different apps is matched automatically or linked by you. One chat works exactly as before.
+- **How much to read:** 📖 Everything (default) reads every message of every chat as long as it fits, ⚖️ Balanced reads a large sample, 👀 Quick skim reads a small one. Before you start, the card tells you exactly how much of each chat will be read, and the report shows what was read. Pair it with the depth: the heavier the model, the deeper it analyses what it reads.
 - **Five investigators, each with a speciality report:** Sherlock investigates the fights, Cupid handles love matters, Aunty delivers sarcasm, the Gossip Queen does character analysis, and Osho finds the life lessons. Three spice levels for tone (Wholesome, Spicy, Nuclear) and three investigation depths that pick the Claude model: 🔍 Quick Peek (Haiku), 🕵️ Stakeout (Sonnet) and 🧬 Full Forensics (Opus). Reports are always in English, even for Hindi, Hinglish or Bengali chats.
 - **Payments ready, switched off:** ₹5 per raid through Razorpay when you turn it on. Your promo code gives unlimited free raids.
 
@@ -120,6 +121,10 @@ The access rules live in `.env` locally, or in Render's **Environment** tab onli
 3. Try a test payment with Razorpay's test cards. When it works, swap in your **live** keys. Live keys need your account to be activated with KYC.
 
 Payments are verified with Razorpay's signature check. Each payment unlocks one roast, and a failed roast can be retried with the same payment.
+
+### How much a chat is read (and what it costs)
+
+"Everything" sends the whole chat, which costs more than a sample. The server stops at `MAX_READ_CHARS` (default 600,000 characters, about 200,000 tokens) and shares that between the chats. Raise it in `.env` or Render's Environment tab to read bigger chats in full. The one-click claude.ai page is limited by Claude's own input size (about 250 KB of text), which still fits the full text of chats with several thousand messages because the page packs them compactly.
 
 ### Cost per raid (what you pay Anthropic)
 

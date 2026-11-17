@@ -89,6 +89,15 @@
             </div>
           </div>
         </div>
+        <div>
+          <span class="opt-title">How much to read</span>
+          <div class="seg seg-3" role="radiogroup" aria-label="How much to read">
+            <input type="radio" name="read" id="rd-a" value="all" checked><label for="rd-a">📖 Everything</label>
+            <input type="radio" name="read" id="rd-b" value="balanced"><label for="rd-b">⚖️ Balanced</label>
+            <input type="radio" name="read" id="rd-q" value="skim"><label for="rd-q">👀 Quick skim</label>
+          </div>
+          <p class="depth-note" id="read-note" style="margin-top:8px">Reads every message of every chat, as long as it fits.</p>
+        </div>
         <div class="secret-depth" id="secret-depth" hidden>
           <input type="radio" name="depth" id="dp-x" value="secret" disabled><label for="dp-x">🗝️ Top Secret <small>owner only</small></label>
         </div>

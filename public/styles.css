@@ -465,3 +465,7 @@ td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 .ebag.light .bag-x { border-color: var(--navy); color: var(--navy); }
 .ebag.light .bag-alias { background: var(--sky-2); border-color: var(--navy); color: var(--navy); }
 .ebag.light .bag-alias summary { color: var(--navy); }
+.read-line { margin-top: 12px; font-family: var(--f-mono); font-size: .8rem; color: var(--navy-soft); overflow-wrap: anywhere; }
+.read-line b { color: var(--navy); }
+.reading-plan { font-size: .9rem; color: #c9d4f5; margin-top: 8px; }
+.reading-plan b { color: var(--tape); }

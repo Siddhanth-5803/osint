@@ -10,7 +10,7 @@ import {
 } from "./payments.js";
 
 const PUBLIC = path.join(ROOT, "public");
-const MAX_BODY = 3 * 1024 * 1024;
+const MAX_BODY = 8 * 1024 * 1024;
 const TYPES = {
   ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8",
   ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon",
@@ -65,6 +65,7 @@ function publicConfig(ip) {
     aiReady: config.anthropicKeySet || config.mockAi || Boolean(config.mockAiFile),
     mockAi: config.mockAi,
     depths: config.allowedDepths,
+    maxReadChars: config.maxReadChars,
     personas: Object.fromEntries(Object.entries(PERSONAS).map(([k, v]) => [k, v.label])),
   };
 }
@@ -100,13 +101,13 @@ async function handleApi(req, res, url) {
       kind: c?.kind === "group" ? "group" : "private",
       title: typeof c?.title === "string" ? c.title.slice(0, 120) : "",
       stats: c?.stats && typeof c.stats === "object" && JSON.stringify(c.stats).length < 20_000 ? c.stats : {},
-      transcript: typeof c?.transcript === "string" ? c.transcript.slice(0, 100_000) : "",
+      transcript: typeof c?.transcript === "string" ? c.transcript.slice(0, config.maxReadChars) : "",
     })).filter((c) => c.transcript.length >= 20);
-    if (contexts.reduce((n, c) => n + c.transcript.length, 0) > 320_000) return send(res, 413, { error: "The extra chats are too big to send. Remove one or use shorter exports." });
+    if (contexts.reduce((n, c) => n + c.transcript.length, 0) > config.maxReadChars * 1.1) return send(res, 413, { error: "The extra chats are too big to send. Remove one or use shorter exports." });
     if (!stats || typeof stats !== "object" || typeof transcript !== "string" || transcript.length < 20) {
       return send(res, 400, { error: "No chat found in the request." });
     }
-    if (transcript.length > 450_000) return send(res, 413, { error: "Transcript sample is too large." });
+    if (transcript.length > config.maxReadChars * 1.1) return send(res, 413, { error: "That chat is too big to read in one go. Pick Balanced, or use a shorter export." });
     if (!PERSONAS[persona] || !SPICE[spice]) {
       return send(res, 400, { error: "Unknown persona or spice level." });
     }

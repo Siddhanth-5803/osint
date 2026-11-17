@@ -299,49 +299,80 @@ export function restoreDeep(value, restore) {
 
 export const scrub = (t) => t.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "<email>").replace(/\+?\d[\d\s-]{8,}\d/g, "<number>");
 
-// Picks a representative sample of the chat that fits the budget (characters).
-// idPrefix: "B" gives ids like B#12, so lines from a context chat can't be mistaken for the main chat's #12.
-export function buildTranscript(chat, stats, { anon = null, budget = 150_000, idPrefix = "" } = {}) {
+const hm = (ts) => { const d = new Date(ts); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+
+// Turns a chat into compact transcript lines the AI reads:
+//   --- 2026-11-08 ---
+//   #12 14:02 Name: text          (media runs collapse into "<media x3>")
+// all: include every message when it fits the budget (characters); otherwise, or when all is false,
+//      pick a representative sample. maxMsg: longest single message kept.
+// idPrefix: "B" gives ids like B#12, so lines from another chat can't be mistaken for the main chat's #12.
+// Returns { text, included, total } (messages included out of all messages).
+export function buildTranscriptEx(chat, stats, { anon = null, budget = 150_000, idPrefix = "", all = false, maxMsg = 500 } = {}) {
   const msgs = chat.messages.filter((m) => m.author && m.type !== "system" && m.type !== "call");
-  const line = (m) => {
-    const who = anon ? anon.name(m.author) : m.author;
-    let body = m.type === "media" ? "<media>" : m.type === "deleted" ? "<deleted message>" : scrub(m.text).slice(0, 500).replace(/\n/g, " / ");
-    if (anon && m.type === "text") body = anon.text(body);
-    return `${idPrefix}#${m.i} [${fmtStamp(m.ts)}] ${who}: ${body}`;
+  const entries = [];
+  for (const m of msgs) {
+    const kind = m.type === "media" ? "media" : m.type === "deleted" ? "deleted" : "text";
+    const last = entries[entries.length - 1];
+    if (kind !== "text" && last && last.kind === kind && last.author === m.author && m.ts - last.endTs <= 600e3) { last.count++; last.endTs = m.ts; continue; }
+    entries.push({ i: m.i, ts: m.ts, endTs: m.ts, author: m.author, kind, text: m.text, count: 1 });
+  }
+  const line = (e) => {
+    const who = anon ? anon.name(e.author) : e.author;
+    let body;
+    if (e.kind === "media") body = e.count > 1 ? `<media x${e.count}>` : "<media>";
+    else if (e.kind === "deleted") body = e.count > 1 ? `<deleted x${e.count}>` : "<deleted message>";
+    else {
+      body = scrub(e.text).slice(0, maxMsg).replace(/\n/g, " / ");
+      if (anon) body = anon.text(body);
+    }
+    return `${idPrefix}#${e.i} ${hm(e.ts)} ${who}: ${body}`;
   };
-  const lines = msgs.map(line);
+  const lines = entries.map(line);
   const n = lines.length;
+  const days = new Set(entries.map((e) => fmtDate(e.ts))).size;
+  const room = budget - days * 18; // day headers
   const keep = new Uint8Array(n);
   let used = 0;
-  const add = (i) => { if (i >= 0 && i < n && !keep[i] && used + lines[i].length + 1 <= budget) { keep[i] = 1; used += lines[i].length + 1; } };
+  const add = (i) => { if (i >= 0 && i < n && !keep[i] && used + lines[i].length + 1 <= room) { keep[i] = 1; used += lines[i].length + 1; } };
 
-  for (let i = 0; i < Math.min(250, n); i++) add(i);
-  for (let i = Math.max(0, n - 250); i < n; i++) add(i);
-  const spikeDays = new Set(stats.spikes.slice(0, 3).map((s) => s.day));
-  let perDay = new Map();
-  msgs.forEach((m, i) => {
-    const d = fmtDate(m.ts);
-    if (spikeDays.has(d) && (perDay.get(d) || 0) < 300) { perDay.set(d, (perDay.get(d) || 0) + 1); add(i); }
-  });
-  // evenly spaced windows of 40 messages
-  const windowSize = 40;
-  for (let step = Math.max(windowSize * 2, Math.floor(n / 8)); step >= windowSize && used < budget * 0.97; step = Math.floor(step / 2)) {
-    for (let start = 0; start < n && used < budget * 0.97; start += step) {
-      for (let i = start; i < start + windowSize; i++) add(i);
+  const fullSize = lines.reduce((t, l) => t + l.length + 1, 0);
+  if (all && fullSize <= room) keep.fill(1);
+  else {
+    for (let i = 0; i < Math.min(250, n); i++) add(i);
+    for (let i = Math.max(0, n - 250); i < n; i++) add(i);
+    const spikeDays = new Set(stats.spikes.slice(0, 3).map((x) => x.day));
+    const perDay = new Map();
+    entries.forEach((e, i) => {
+      const d = fmtDate(e.ts);
+      if (spikeDays.has(d) && (perDay.get(d) || 0) < 300) { perDay.set(d, (perDay.get(d) || 0) + 1); add(i); }
+    });
+    // evenly spaced windows of 40 lines, getting denser until the budget is used
+    const windowSize = 40;
+    for (let step = Math.max(windowSize * 2, Math.floor(n / 8)); step >= windowSize && used < room * 0.97; step = Math.floor(step / 2)) {
+      for (let start = 0; start < n && used < room * 0.97; start += step) for (let i = start; i < start + windowSize; i++) add(i);
     }
+    // still room? fill gaps in time order, so a big budget reads as much as it can
+    for (let i = 0; i < n && used < room; i++) add(i);
   }
 
   const out = [];
-  let skipped = 0;
+  let skipped = 0, includedMsgs = 0, day = "";
   for (let i = 0; i < n; i++) {
     if (keep[i]) {
-      if (skipped) out.push(`... [${skipped} messages skipped] ...`);
-      skipped = 0;
+      if (skipped) { out.push(`... [${skipped} messages skipped] ...`); skipped = 0; }
+      const d = fmtDate(entries[i].ts);
+      if (d !== day) { day = d; out.push(`--- ${d} ---`); }
       out.push(lines[i]);
-    } else skipped++;
+      includedMsgs += entries[i].count;
+    } else skipped += entries[i].count;
   }
   if (skipped) out.push(`... [${skipped} messages skipped] ...`);
-  return out.join("\n");
+  return { text: out.join("\n"), included: includedMsgs, total: msgs.length };
+}
+
+export function buildTranscript(chat, stats, opts = {}) {
+  return buildTranscriptEx(chat, stats, opts).text;
 }
 
 // A short summary of a context chat for the AI (the main chat gets the full statsForAi).

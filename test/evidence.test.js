@@ -116,14 +116,17 @@ test("a context-style id never pulls a message from the main chat", () => {
   assert.doesNotMatch(html, /context id/, "prefixed ids are ignored by receipts");
 });
 
-test("a group is the default main chat even when a private chat is bigger; private chats are marked", () => {
+test("any chat can be the main one: the biggest by default; private chats are marked", () => {
   const { items } = bagOf();
   const group = items.find((i) => i.chat.source === "whatsapp");
   const dm = { ...items.find((i) => i.chat.source === "instagram"), id: "dm" };
   dm.stats = { ...dm.stats, totalMessages: 99999, people: dm.stats.people.slice(0, 2) };
-  assert.equal(pickMain([dm, group]), group.id);
+  assert.equal(pickMain([dm, group]), "dm", "a private chat can be the main chat");
+  assert.equal(pickMain([group]), group.id);
   assert.equal(pickMain([dm]), "dm");
   const ev = prepareEvidence({ bag: [group, dm], mainId: group.id, hide: true, budget: 30_000 });
+  const ev2 = prepareEvidence({ bag: [group, dm], mainId: "dm", hide: true, budget: 30_000 });
+  assert.equal(ev2.contexts[0].kind, "group", "and a group can be context for it");
   assert.equal(ev.contexts[0].kind, "private");
   const msg = buildUserMessage({ stats: {}, transcript: "#1 x", contexts: ev.contexts });
   assert.match(msg, /kind="private"/);
@@ -143,4 +146,41 @@ test("a group plus a private chat with each friend fits in one bag", () => {
   assert.ok(total < 100_000 + 8000, "total stays near the budget");
   const plan = planBudget(100_000, MAX_CONTEXT);
   assert.ok(plan.main >= 50_000 && plan.each > 3_000, "the main chat keeps at least half and each private chat still gets a useful slice");
+});
+
+test("read everything: nothing is dropped when it fits, and coverage says so", () => {
+  const { items } = bagOf();
+  const ev = prepareEvidence({ bag: items, mainId: pickMain(items), hide: true, budget: 500_000, all: true });
+  assert.equal(ev.fullyRead, true);
+  assert.ok(ev.coverage.every((c) => c.pct === 100 && c.included === c.total));
+  assert.ok(!/messages skipped/.test(ev.mainTranscript + ev.contexts.map((c) => c.transcript).join("")));
+  assert.match(ev.mainTranscript, /^--- \d{4}-\d{2}-\d{2} ---$/m);
+  assert.match(ev.mainTranscript, /^#\d+ \d{2}:\d{2} Suspect [A-Z]: /m);
+});
+
+test("when everything cannot fit, every chat shrinks fairly and the report says how much was read", () => {
+  const { items } = bagOf();
+  const ev = prepareEvidence({ bag: items, mainId: pickMain(items), hide: true, budget: 3_500, all: true });
+  assert.equal(ev.fullyRead, false);
+  assert.ok(ev.coverage.some((c) => c.pct < 100));
+  const total = ev.mainTranscript.length + ev.contexts.reduce((n, c) => n + c.transcript.length, 0);
+  assert.ok(total < 3_500 + 3_000 * 3 + 600, "stays near the budget");
+  assert.ok(/messages skipped/.test(ev.mainTranscript + ev.contexts.map((c) => c.transcript).join("")));
+});
+
+test("media runs collapse and receipts can come from a context chat", async () => {
+  const { buildTranscriptEx } = await import("../public/js/stats.js");
+  const { parseWhatsApp } = await import("../public/js/parser.js");
+  const chat = parseWhatsApp(["12/03/2026, 21:14 - A: hi there", "12/03/2026, 21:15 - A: <Media omitted>", "12/03/2026, 21:15 - A: <Media omitted>", "12/03/2026, 21:16 - A: <Media omitted>", "12/03/2026, 21:17 - B: wow"].join("\n"));
+  const t = buildTranscriptEx(chat, { spikes: [] }, { all: true, budget: 1e6 });
+  assert.match(t.text, /<media x3>/);
+  assert.equal(t.included, 5, "all five messages are counted as read");
+  const { items } = bagOf();
+  const main = items.find((i) => i.chat.source === "whatsapp");
+  const insta = items.find((i) => i.chat.source === "instagram");
+  const cf = coerceCase(SAMPLE_CASE);
+  cf.suspects[0].receipts = [{ msg_id: "B#5", translation: "", reply_id: "", reply_translation: "", note: "from the other app" }];
+  const html = renderCase(cf, main.stats, { chats: { "": main.chat, B: insta.chat } });
+  assert.match(html, /B#5 · /);
+  assert.match(html, /in Aarav and Zoya/);
 });

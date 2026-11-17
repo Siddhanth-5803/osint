@@ -40,6 +40,9 @@ export const config = {
   },
   allowedDepths: (env.ALLOWED_DEPTHS || "quick,standard,deep").split(",").map((s) => s.trim()).filter((d) => ["quick", "standard", "deep"].includes(d)),
   effort: env.CLAUDE_EFFORT || "medium",
+  // The most characters of chat one investigation may read ("Everything" reading stops here).
+  // 600,000 characters is roughly 200,000 tokens. Raise it to read bigger chats in full; each raid costs more.
+  maxReadChars: Math.min(2_000_000, Math.max(50_000, Number(env.MAX_READ_CHARS) || 600_000)),
 
   // Access and payments
   // free       = anyone can run the AI roast, limited per IP per day (promo holders unlimited)

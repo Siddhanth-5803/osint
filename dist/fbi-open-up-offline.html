@@ -477,6 +477,10 @@ td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 .ebag.light .bag-x { border-color: var(--navy); color: var(--navy); }
 .ebag.light .bag-alias { background: var(--sky-2); border-color: var(--navy); color: var(--navy); }
 .ebag.light .bag-alias summary { color: var(--navy); }
+.read-line { margin-top: 12px; font-family: var(--f-mono); font-size: .8rem; color: var(--navy-soft); overflow-wrap: anywhere; }
+.read-line b { color: var(--navy); }
+.reading-plan { font-size: .9rem; color: #c9d4f5; margin-top: 8px; }
+.reading-plan b { color: var(--tape); }
 
 /* one-click version: the platform already pads the page for phone notches */
 body { padding-top: 0; padding-bottom: 0; }
@@ -561,6 +565,15 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
               <input type="radio" name="depth" id="dp-d" value="deep"><label for="dp-d">🧬 Full Forensics</label>
             </div>
           </div>
+        </div>
+        <div>
+          <span class="opt-title">How much to read</span>
+          <div class="seg seg-3" role="radiogroup" aria-label="How much to read">
+            <input type="radio" name="read" id="rd-a" value="all" checked><label for="rd-a">📖 Everything</label>
+            <input type="radio" name="read" id="rd-b" value="balanced"><label for="rd-b">⚖️ Balanced</label>
+            <input type="radio" name="read" id="rd-q" value="skim"><label for="rd-q">👀 Quick skim</label>
+          </div>
+          <p class="depth-note" id="read-note" style="margin-top:8px">Reads every message of every chat, as long as it fits.</p>
         </div>
         <div class="secret-depth" id="secret-depth" hidden>
           <input type="radio" name="depth" id="dp-x" value="secret" disabled><label for="dp-x">🗝️ Top Secret <small>owner only</small></label>
@@ -1135,49 +1148,80 @@ function restoreDeep(value, restore) {
 
 const scrub = (t) => t.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "<email>").replace(/\+?\d[\d\s-]{8,}\d/g, "<number>");
 
-// Picks a representative sample of the chat that fits the budget (characters).
-// idPrefix: "B" gives ids like B#12, so lines from a context chat can't be mistaken for the main chat's #12.
-function buildTranscript(chat, stats, { anon = null, budget = 150_000, idPrefix = "" } = {}) {
+const hm = (ts) => { const d = new Date(ts); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+
+// Turns a chat into compact transcript lines the AI reads:
+//   --- 2026-11-08 ---
+//   #12 14:02 Name: text          (media runs collapse into "<media x3>")
+// all: include every message when it fits the budget (characters); otherwise, or when all is false,
+//      pick a representative sample. maxMsg: longest single message kept.
+// idPrefix: "B" gives ids like B#12, so lines from another chat can't be mistaken for the main chat's #12.
+// Returns { text, included, total } (messages included out of all messages).
+function buildTranscriptEx(chat, stats, { anon = null, budget = 150_000, idPrefix = "", all = false, maxMsg = 500 } = {}) {
   const msgs = chat.messages.filter((m) => m.author && m.type !== "system" && m.type !== "call");
-  const line = (m) => {
-    const who = anon ? anon.name(m.author) : m.author;
-    let body = m.type === "media" ? "<media>" : m.type === "deleted" ? "<deleted message>" : scrub(m.text).slice(0, 500).replace(/\n/g, " / ");
-    if (anon && m.type === "text") body = anon.text(body);
-    return `${idPrefix}#${m.i} [${fmtStamp(m.ts)}] ${who}: ${body}`;
+  const entries = [];
+  for (const m of msgs) {
+    const kind = m.type === "media" ? "media" : m.type === "deleted" ? "deleted" : "text";
+    const last = entries[entries.length - 1];
+    if (kind !== "text" && last && last.kind === kind && last.author === m.author && m.ts - last.endTs <= 600e3) { last.count++; last.endTs = m.ts; continue; }
+    entries.push({ i: m.i, ts: m.ts, endTs: m.ts, author: m.author, kind, text: m.text, count: 1 });
+  }
+  const line = (e) => {
+    const who = anon ? anon.name(e.author) : e.author;
+    let body;
+    if (e.kind === "media") body = e.count > 1 ? `<media x${e.count}>` : "<media>";
+    else if (e.kind === "deleted") body = e.count > 1 ? `<deleted x${e.count}>` : "<deleted message>";
+    else {
+      body = scrub(e.text).slice(0, maxMsg).replace(/\n/g, " / ");
+      if (anon) body = anon.text(body);
+    }
+    return `${idPrefix}#${e.i} ${hm(e.ts)} ${who}: ${body}`;
   };
-  const lines = msgs.map(line);
+  const lines = entries.map(line);
   const n = lines.length;
+  const days = new Set(entries.map((e) => fmtDate(e.ts))).size;
+  const room = budget - days * 18; // day headers
   const keep = new Uint8Array(n);
   let used = 0;
-  const add = (i) => { if (i >= 0 && i < n && !keep[i] && used + lines[i].length + 1 <= budget) { keep[i] = 1; used += lines[i].length + 1; } };
+  const add = (i) => { if (i >= 0 && i < n && !keep[i] && used + lines[i].length + 1 <= room) { keep[i] = 1; used += lines[i].length + 1; } };
 
-  for (let i = 0; i < Math.min(250, n); i++) add(i);
-  for (let i = Math.max(0, n - 250); i < n; i++) add(i);
-  const spikeDays = new Set(stats.spikes.slice(0, 3).map((s) => s.day));
-  let perDay = new Map();
-  msgs.forEach((m, i) => {
-    const d = fmtDate(m.ts);
-    if (spikeDays.has(d) && (perDay.get(d) || 0) < 300) { perDay.set(d, (perDay.get(d) || 0) + 1); add(i); }
-  });
-  // evenly spaced windows of 40 messages
-  const windowSize = 40;
-  for (let step = Math.max(windowSize * 2, Math.floor(n / 8)); step >= windowSize && used < budget * 0.97; step = Math.floor(step / 2)) {
-    for (let start = 0; start < n && used < budget * 0.97; start += step) {
-      for (let i = start; i < start + windowSize; i++) add(i);
+  const fullSize = lines.reduce((t, l) => t + l.length + 1, 0);
+  if (all && fullSize <= room) keep.fill(1);
+  else {
+    for (let i = 0; i < Math.min(250, n); i++) add(i);
+    for (let i = Math.max(0, n - 250); i < n; i++) add(i);
+    const spikeDays = new Set(stats.spikes.slice(0, 3).map((x) => x.day));
+    const perDay = new Map();
+    entries.forEach((e, i) => {
+      const d = fmtDate(e.ts);
+      if (spikeDays.has(d) && (perDay.get(d) || 0) < 300) { perDay.set(d, (perDay.get(d) || 0) + 1); add(i); }
+    });
+    // evenly spaced windows of 40 lines, getting denser until the budget is used
+    const windowSize = 40;
+    for (let step = Math.max(windowSize * 2, Math.floor(n / 8)); step >= windowSize && used < room * 0.97; step = Math.floor(step / 2)) {
+      for (let start = 0; start < n && used < room * 0.97; start += step) for (let i = start; i < start + windowSize; i++) add(i);
     }
+    // still room? fill gaps in time order, so a big budget reads as much as it can
+    for (let i = 0; i < n && used < room; i++) add(i);
   }
 
   const out = [];
-  let skipped = 0;
+  let skipped = 0, includedMsgs = 0, day = "";
   for (let i = 0; i < n; i++) {
     if (keep[i]) {
-      if (skipped) out.push(`... [${skipped} messages skipped] ...`);
-      skipped = 0;
+      if (skipped) { out.push(`... [${skipped} messages skipped] ...`); skipped = 0; }
+      const d = fmtDate(entries[i].ts);
+      if (d !== day) { day = d; out.push(`--- ${d} ---`); }
       out.push(lines[i]);
-    } else skipped++;
+      includedMsgs += entries[i].count;
+    } else skipped += entries[i].count;
   }
   if (skipped) out.push(`... [${skipped} messages skipped] ...`);
-  return out.join("\n");
+  return { text: out.join("\n"), included: includedMsgs, total: msgs.length };
+}
+
+function buildTranscript(chat, stats, opts = {}) {
+  return buildTranscriptEx(chat, stats, opts).text;
 }
 
 // A short summary of a context chat for the AI (the main chat gets the full statsForAi).
@@ -1198,14 +1242,14 @@ function contextSummary(stats, rename = (n) => n) {
   };
 }
 
-return { humanDuration, computeStats, statsForAi, makeNameMap, restoreDeep, scrub, buildTranscript, contextSummary };
+return { humanDuration, computeStats, statsForAi, makeNameMap, restoreDeep, scrub, buildTranscriptEx, buildTranscript, contextSummary };
 })();
 
 const __m1_evidence = (() => {
 // The evidence bag: one main chat plus optional context chats from other apps.
 // Shared by the website, the one-click page and the tests.
 const { parseFiles } = __m2_parser;
-const { computeStats, statsForAi, contextSummary, buildTranscript, makeNameMap, scrub } = __m3_stats;
+const { computeStats, statsForAi, contextSummary, buildTranscriptEx, makeNameMap, scrub } = __m3_stats;
 const MAX_CONTEXT = 8; // extra chats on top of the main one (a group plus a private chat with each friend)
 const NOT_SAME = "__not_same__"; // alias choice meaning "a different person"
 const SOURCE_NAMES = { whatsapp: "WhatsApp", telegram: "Telegram", instagram: "Instagram" };
@@ -1290,13 +1334,10 @@ function addToBag(bag, items) {
   return { bag: out, notes };
 }
 
-// A group chat is the default main chat (private chats are then its context); otherwise the biggest chat.
+// Any chat can be the main one (a group or a private chat). The biggest is the default; the viewer can switch.
 const isGroup = (it) => it.stats.people.length >= 3;
-const pickMain = (items) => {
-  const groups = items.filter(isGroup);
-  const pool = groups.length ? groups : items;
-  return pool.reduce((best, it) => (!best || it.stats.totalMessages > best.stats.totalMessages ? it : best), null)?.id ?? null;
-};
+const pickMain = (items) =>
+  items.reduce((best, it) => (!best || it.stats.totalMessages > best.stats.totalMessages ? it : best), null)?.id ?? null;
 
 // ---------- the same person on different apps ----------
 const norm = (s) => String(s || "").toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]/gu, "");
@@ -1363,12 +1404,28 @@ const safeTitle = (anon, t) => {
 
 // Builds everything the AI reads. hide=true swaps names for Suspect A, B, C across ALL chats,
 // and the same person gets the same code on every app.
-function prepareEvidence({ bag, mainId, userAliases = {}, hide = true, budget }) {
+// all=true reads every message of every chat when it fits in `budget` (characters); if it doesn't,
+// each chat gets a fair share of the budget. all=false reads a sample sized by `budget`.
+// coverage tells exactly how much of each chat was included.
+function prepareEvidence({ bag, mainId, userAliases = {}, hide = true, budget, all = false }) {
   const { main, aliases, people } = analysePeople(bag, mainId, userAliases);
   const contexts = bag.filter((b) => b !== main).slice(0, MAX_CONTEXT);
   const anon = hide ? makeNameMap(people, aliases) : null;
   const rename = anon ? anon.name : (n) => n;
-  const plan = planBudget(budget, contexts.length);
+  const maxMsg = all ? 1500 : 500;
+  const chats = [main, ...contexts];
+  const labels = ["", ...contexts.map((_, i) => String.fromCharCode(66 + i))]; // main has plain ids; B, C, D... for the rest
+  const build = (c, i, b) => buildTranscriptEx(c.chat, c.stats, { anon, budget: b, idPrefix: labels[i], all, maxMsg });
+
+  let parts;
+  if (all) {
+    const full = chats.map((c, i) => build(c, i, Infinity));
+    const total = full.reduce((n, f) => n + f.text.length, 0);
+    parts = total <= budget ? full : chats.map((c, i) => build(c, i, Math.max(3000, Math.floor((budget * full[i].text.length) / total))));
+  } else {
+    const plan = planBudget(budget, contexts.length);
+    parts = chats.map((c, i) => build(c, i, i === 0 ? plan.main : plan.each));
+  }
 
   const mainStats = statsForAi(main.stats, rename);
   mainStats.title = safeTitle(anon, main.stats.title);
@@ -1377,25 +1434,31 @@ function prepareEvidence({ bag, mainId, userAliases = {}, hide = true, budget })
     mainStats.group_top_words = (mainStats.group_top_words || []).map((w) => anon.text(w));
     for (const p of mainStats.people || []) p.top_words = (p.top_words || []).map((w) => anon.text(w));
   }
-  const mainTranscript = buildTranscript(main.chat, main.stats, { anon, budget: plan.main });
 
   const ctx = contexts.map((c, i) => {
-    const label = String.fromCharCode(66 + i); // B, C, D
     const summary = contextSummary(c.stats, rename);
     summary.title = safeTitle(anon, c.stats.title);
-    return {
-      label,
-      source: c.chat.source,
-      kind: isGroup(c) ? "group" : "private",
-      title: summary.title,
-      stats: summary,
-      transcript: buildTranscript(c.chat, c.stats, { anon, budget: plan.each, idPrefix: label }),
-    };
+    return { label: labels[i + 1], source: c.chat.source, kind: isGroup(c) ? "group" : "private", title: summary.title, stats: summary, transcript: parts[i + 1].text };
   });
-  return { anon, mainStats, mainTranscript, contexts: ctx };
+  const coverage = chats.map((c, i) => ({
+    label: labels[i],
+    title: c.chat.title,
+    included: parts[i].included,
+    total: parts[i].total,
+    pct: parts[i].total ? Math.round((parts[i].included / parts[i].total) * 100) : 100,
+  }));
+  return { anon, mainStats, mainTranscript: parts[0].text, contexts: ctx, coverage, fullyRead: coverage.every((c) => c.included >= c.total) };
 }
 
-return { MAX_CONTEXT, NOT_SAME, sourceName, readUploads, parseUploads, addToBag, isGroup, pickMain, autoAlias, analysePeople, planBudget, prepareEvidence };
+// The chats by id prefix, the way the AI sees them: "" is the main chat, B, C, D... the context chats.
+function chatMap(bag, mainId) {
+  const main = bag.find((b) => b.id === mainId) || bag[0];
+  const map = { "": main.chat };
+  bag.filter((b) => b !== main).slice(0, MAX_CONTEXT).forEach((b, i) => { map[String.fromCharCode(66 + i)] = b.chat; });
+  return map;
+}
+
+return { MAX_CONTEXT, NOT_SAME, sourceName, readUploads, parseUploads, addToBag, isGroup, pickMain, autoAlias, analysePeople, planBudget, prepareEvidence, chatMap };
 })();
 
 const __m5_report = (() => {
@@ -1439,18 +1502,20 @@ function when(ts) {
   }
 }
 
-// Receipts: the person's real messages (looked up in the chat by id) and the replies they got.
-function receiptsHtml(list, chat) {
-  if (!chat?.messages?.length || !Array.isArray(list) || !list.length) return "";
-  const msgs = chat.messages;
-  const byId = (id) => {
-    // Only plain ids like "#12" or "12" belong to the main chat. Prefixed ones (B#12) come from context chats.
-    const m0 = String(id ?? "").trim().match(/^#?(\d{1,7})$/);
-    const n = m0 ? parseInt(m0[1], 10) : NaN;
-    const m = Number.isFinite(n) ? msgs[n - 1] : null;
-    return m && m.i === n && m.author ? m : null;
+// Receipts: the person's real messages (looked up in the chats by id) and the replies they got.
+// chats: { "": mainChat, B: contextChat, ... }. Plain ids ("#12") are the main chat, prefixed ones ("B#12") a context chat.
+function receiptsHtml(list, chats) {
+  if (!chats || !Array.isArray(list) || !list.length) return "";
+  const find = (id) => {
+    const m0 = String(id ?? "").trim().match(/^([A-Z]?)#?(\d{1,7})$/);
+    if (!m0) return null;
+    const chat = chats[m0[1]];
+    const n = parseInt(m0[2], 10);
+    const m = chat?.messages?.[n - 1];
+    return m && m.i === n && m.author ? { m, chat, prefix: m0[1] } : null;
   };
-  const nextReply = (m) => {
+  const nextReply = (m, chat) => {
+    const msgs = chat.messages;
     for (let k = m.i; k < Math.min(msgs.length, m.i + 40); k++) {
       const r = msgs[k];
       if (r.ts - m.ts > 12 * 3600e3) break;
@@ -1460,12 +1525,16 @@ function receiptsHtml(list, chat) {
   };
   const seen = new Set();
   const items = list.map((r) => {
-    const m = byId(r.msg_id);
-    if (!m || seen.has(m.i)) return "";
-    seen.add(m.i);
-    let reply = byId(r.reply_id);
-    let replyTr = r.reply_translation;
-    if (!reply || reply.author === m.author || reply.i <= m.i) { reply = nextReply(m); replyTr = ""; }
+    const hit = find(r.msg_id);
+    if (!hit) return "";
+    const { m, chat, prefix } = hit;
+    const key = prefix + "#" + m.i;
+    if (seen.has(key)) return "";
+    seen.add(key);
+    let reply = null, replyTr = "";
+    const rr = find(r.reply_id);
+    if (rr && rr.chat === chat && rr.m.author !== m.author && rr.m.i > m.i) { reply = rr.m; replyTr = r.reply_translation; }
+    else reply = nextReply(m, chat);
     const body = msgBody(m);
     const tr = m.type === "text" && r.translation && !sameText(r.translation, m.text) ? `<p class="r-tr"><span class="r-en">English</span> ${esc(r.translation)}</p>` : "";
     let replyHtml = "";
@@ -1474,8 +1543,9 @@ function receiptsHtml(list, chat) {
       const rtr = reply.type === "text" && replyTr && !sameText(replyTr, reply.text) ? `<p class="r-tr"><span class="r-en">English</span> ${esc(replyTr)}</p>` : "";
       replyHtml = `<div class="r-reply"><span class="r-meta">↳ ${esc(reply.author)} replied${reply.ts - m.ts > 60e3 ? ` · ${esc(humanDuration(reply.ts - m.ts))} later` : ""}</span><p class="r-text">${esc(rb)}</p>${rtr}</div>`;
     }
+    const from = prefix ? ` · in ${esc(chat.title || "another chat")}` : "";
     return `<div class="rcpt">
-  <div class="r-msg"><span class="r-meta">#${m.i} · ${esc(when(m.ts))} · ${esc(m.author)}</span><p class="r-text">${esc(body)}</p>${tr}</div>
+  <div class="r-msg"><span class="r-meta">${esc(prefix)}#${m.i} · ${esc(when(m.ts))} · ${esc(m.author)}${from}</span><p class="r-text">${esc(body)}</p>${tr}</div>
   ${replyHtml}
   ${r.note ? `<p class="r-note">${esc(r.note)}</p>` : ""}
 </div>`;
@@ -1509,9 +1579,11 @@ function autoReceipts(name, chat) {
 }
 
 // ---------------- AI case file ----------------
-// opts.chat: the parsed chat (for receipts). opts.me: the uploader's name, to mark their mugshot.
+// opts.chat: the main chat (for receipts). opts.chats: all chats by id prefix ({ "": main, B: ... }).
+// opts.me: the uploader's name, to mark their mugshot. opts.coverage: how much of each chat was read.
 function renderCase(cf, stats, opts = {}) {
-  const { chat = null, me = "" } = opts;
+  const { chat = null, me = "", coverage = [] } = opts;
+  const chats = opts.chats || (chat ? { "": chat } : null);
   const people = new Map(stats.people.map((p, i) => [p.name.toLowerCase(), { ...p, idx: i }]));
   const findP = (n) => people.get(String(n || "").toLowerCase());
   const parts = [];
@@ -1532,6 +1604,7 @@ function renderCase(cf, stats, opts = {}) {
       <p class="class">Classified as: ${esc(cf.classification)}</p>
       <p class="oneliner">“${esc(cf.one_liner)}”</p>
       <p class="summary">${esc(cf.raid_summary)}</p>
+      ${coverage.length ? `<p class="read-line">📖 Read: ${coverage.map((c) => `${esc(c.title)} <b>${c.pct}%</b>`).join(" · ")}</p>` : ""}
       ${cf.safety_note ? `<p class="callout" style="margin-top:14px">💛 ${esc(cf.safety_note)}</p>` : ""}
       ${cf.minors_suspected ? `<p class="callout" style="margin-top:14px;background:#e4f4ff">This chat looks like it includes people under 18, so romance analysis is switched off.</p>` : ""}
       <span class="stamp">RAIDED</span>
@@ -1589,7 +1662,7 @@ function renderCase(cf, stats, opts = {}) {
     <div class="kv"><small>Texting style</small><p>${esc(s.texting_style)}</p></div>
     <div class="traits">${traitRow("chaos", "Chaos")}${traitRow("loyalty", "Loyalty")}${traitRow("drama", "Drama")}${traitRow("braincells", "Braincells")}${traitRow("rizz", "Rizz")}</div>
     ${chips}
-    ${receiptsHtml(s.receipts, chat) || receiptsHtml(autoReceipts(p?.name || s.name, chat), chat).replace("🧾 Receipts", "🧾 Receipts <small>(picked by the page)</small>")}
+    ${receiptsHtml(s.receipts, chats) || receiptsHtml(autoReceipts(p?.name || s.name, chats?.[""]), chats).replace("🧾 Receipts", "🧾 Receipts <small>(picked by the page)</small>")}
   </div>
 </article>`;
   })).join("");
@@ -1830,7 +1903,7 @@ function bagHtml(t, { fileId = "bag-file", light = false, removeLast = false } =
   const room = bag.length < MAX_CONTEXT + 1;
   const hint = multi
     ? "Pick the main chat. The others add context."
-    : "Optional: drop more chats. A group chat plus private chats with each friend gives the best picture.";
+    : "Optional: drop more chats of any kind (groups, private chats, other apps). More context gives a better picture.";
   return `<div class="ebag${light ? " light" : ""}">
   <div class="bag-head"><b>📚 Evidence bag <small>(${bag.length} of ${MAX_CONTEXT + 1})</small></b><small>${hint}</small></div>
   ${rows}
@@ -2375,7 +2448,21 @@ const DEPTH_HINT = {
 const TIER_DEPTH = { quick: "quick", default: "standard", complex: "deep" };
 const DEFAULT_DEPTH = "standard";
 
-return { DEPTHS, DEPTH_BUDGET, DEPTH_HINT, TIER_DEPTH, DEFAULT_DEPTH };
+// How much of each chat the investigator reads.
+const READING = {
+  all: { emoji: "📖", label: "Everything", desc: "Reads every message of every chat, as long as it fits. Slowest, and uses the most of your Claude." },
+  balanced: { emoji: "⚖️", label: "Balanced", desc: "Reads a large sample of each chat." },
+  skim: { emoji: "👀", label: "Quick skim", desc: "Reads a small sample of each chat. Fastest." },
+};
+const DEFAULT_READING = "all";
+// hardCap: the most characters that can be sent at all (set by the page or the server).
+function readBudget(reading, depth, hardCap) {
+  if (reading === "all") return { all: true, budget: hardCap };
+  const base = DEPTH_BUDGET[depth] || 150_000;
+  return { all: false, budget: Math.min(hardCap, reading === "skim" ? Math.round(base * 0.3) : base) };
+}
+
+return { DEPTHS, DEPTH_BUDGET, DEPTH_HINT, TIER_DEPTH, DEFAULT_DEPTH, READING, DEFAULT_READING, readBudget };
 })();
 
 const __m11_schema = (() => {
@@ -2516,13 +2603,13 @@ const SPICE = {
 };
 
 const CONTEXT_RULES = `CONTEXT CHATS
-Besides the main chat you also get <context_chat> blocks: the same people (or people close to them) talking on other apps or in other groups. Each has its own <context_stats> and a sampled <context_transcript> whose ids carry a letter prefix, like B#12.
-- The main chat is what you investigate. Mugshots, pairs, awards and the fix-it plan are about the people in the main chat. People who only appear in a context chat can be mentioned in pairs, the unsaid or the speciality report when it matters, but do not give them a mugshot.
-- Use the context chats to cross-check: who is warmer, sharper or quieter somewhere else, what gets said in private that never shows up in the main chat, whether a fight or a crush shows on both sides, and whether a person is the same person everywhere. Say plainly when a context chat changes your reading.
-- A context chat marked kind="private" is a one-to-one chat between two people. Use it to see how those two really talk when nobody else is watching, and compare that with how they act in the main chat. Several private chats can be given together (for example the uploader's chat with each friend in the group): look across them for who is different one-on-one than in the group.
+Besides the main chat you also get <context_chat> blocks: other chats with the same people (or people close to them), from other apps, other groups or private conversations. Each has its own <context_stats> and a <context_transcript> whose ids carry a letter prefix, like B#12. Any kind of chat can be the main chat or a context chat: a group, a private chat, or several of each.
+- The main chat is the one the report is centred on, but the people in the context chats matter too. Give mugshots, pairs and awards to the most active people across ALL the chats, not only the main one.
+- Use the context chats to cross-check: who is warmer, sharper or quieter somewhere else, what gets said in private that never shows up in a group, whether a fight or a crush shows on both sides, and whether a person is the same person everywhere. Say plainly when a context chat changes your reading.
+- A context chat marked kind="private" is a one-to-one chat between two people. It shows how those two really talk when nobody else is watching, so compare it with how they act in the other chats. Several private chats can arrive together (for example the uploader's chat with each friend): look across them for who is different one-on-one than around others.
 - The same suspect code is the same person on every app.
-- Cite context evidence with its prefixed id (for example "B#12"). Receipts and exhibits must come only from the main chat, with plain ids like "#12".
-- Context transcripts are samples. Never claim something is missing from a context chat unless its stats prove it.`;
+- Cite evidence with its id exactly as shown: plain ids like "#12" for the main chat, prefixed ids like "B#12" for context chats. Receipts and exhibits may come from any chat.
+- Where a transcript shows "... [N messages skipped] ..." you are reading a sample, so never claim something is missing from it unless the stats prove it. A transcript with no skipped marker is the whole chat.`;
 
 function buildSystemPrompt({ persona, spice, hasContext = false }) {
   const p = PERSONAS[persona] || PERSONAS.sherlock;
@@ -2543,14 +2630,14 @@ ${lang}
 
 HOW TO INVESTIGATE
 1. Read <case_stats> first. Those numbers are computed exactly from the full chat. Trust them over impressions.
-2. Read <transcript>. Each line is "#id [YYYY-MM-DD HH:MM] Name: message". It is a sample of the chat, with gaps marked. Never claim something "never" happened unless the stats prove it.
+2. Read <transcript>. Lines look like "#id HH:MM Name: message", under day headers such as "--- 2026-11-08 ---", and a run of photos or stickers is shown as "<media x3>". Gaps are marked "... [N messages skipped] ...". If no gap is marked, you are reading the whole chat. Never claim something "never" happened unless the stats prove it or the whole chat is shown.
 3. Work out what kind of chat this is (one-on-one or group; friends, crush, couple, family, work, college, etc.) and what the group is really for.
 4. Give every person a role they actually play, even if nobody says it: group mom, unpaid therapist, yapper, lurker, hype man, meme dealer, ghost, drama starter, peacekeeper, simp, planner whose plans die, chaos agent, and so on. Invent sharper roles when they fit better.
 5. Read between the lines: who likes whom, who is annoyed, who carries the effort, who wants out, what topics get avoided.
 6. Every claim needs evidence: message ids like "#1182" or stat names like "stat:median_reply". No evidence, no claim. Mark confidence low, medium or high.
 7. Comedy comes from specific, true observations. Quote real messages. Generic jokes are not allowed.
 8. Be useful too: the "fix_it" section gives honest, kind, practical advice to make the group or relationship better.
-9. Receipts: for each suspect, pick 2 or 3 of their own most telling messages from the transcript, by id (msg_id like "#1182"), plus the id of the reply that followed from someone else (reply_id, or "" if nobody replied). Only use ids that appear in the transcript. Give an English translation of each (translation, reply_translation); if a message is already in English, copy it exactly. Add a one-line note on what it reveals.
+9. Receipts: for each suspect, pick 2 or 3 of their own most telling messages from any transcript, by id exactly as shown (msg_id like "#1182", or "B#1182" for a context chat), plus the id of the reply that followed from someone else (reply_id, or "" if nobody replied). Only use ids that appear in the transcript. Give an English translation of each (translation, reply_translation); if a message is already in English, copy it exactly. Add a one-line note on what it reveals.
 
 ${hasContext ? CONTEXT_RULES + "\n\n" : ""}TRANSLATIONS
 - Every translation and every explanation is in English. Never leave a translation in Hindi, Hinglish, Bengali or any other language.
@@ -2571,7 +2658,7 @@ Return only the JSON object for the schema. Keep it tight so it fits on cards:
 - one-liners under 120 characters, summaries under 260 characters.
 - relationship_mix values are whole numbers that add up to 100.
 - All 0-100 scores are whole numbers.
-- One suspect entry per person, up to 12 (the most active ones). Every pair worth mentioning, up to 10.
+- One suspect entry per person, up to 12 (the most active people across all the chats). Every pair worth mentioning, up to 10.
 - focus_report: a 1-2 sentence intro and 3 to 8 items, written in the investigator's voice. This is the main event of the report.
 - 2 or 3 receipts per suspect.
 - 3 to 6 unsaid findings, 4 to 8 awards, 3 to 6 exhibits, 2 to 6 timeline moments, 3 to 5 fix_it items, exactly 3 share_lines.`;
@@ -2778,7 +2865,7 @@ const __m0_app = (() => {
 // FBI, OPEN UP! — one-click version. Runs entirely in the page; the AI
 // investigation asks Claude through the viewer's own Claude account
 // (the artifact `sample` capability), so there is no server and no key.
-const { pickMain, prepareEvidence } = __m1_evidence;
+const { pickMain, prepareEvidence, chatMap } = __m1_evidence;
 const { bagHtml, bindBag, addFilesTo, removeFrom, setMainOf } = __m4_bag;
 const { parseFiles } = __m2_parser;
 const { computeStats, restoreDeep, scrub } = __m3_stats;
@@ -2786,7 +2873,7 @@ const { renderCase, renderStats, roastText, esc } = __m5_report;
 const { makeShareCard } = __m6_share;
 const { SAMPLE_CHAT_TEXT, SAMPLE_CASE, SAMPLE_TITLE } = __m7_sample;
 const { initCaseBar } = __m8_casebar;
-const { DEPTHS, DEFAULT_DEPTH, DEPTH_BUDGET, DEPTH_HINT, TIER_DEPTH } = __m9_depth;
+const { DEPTHS, DEFAULT_DEPTH, READING, DEFAULT_READING, readBudget, DEPTH_BUDGET, DEPTH_HINT, TIER_DEPTH } = __m9_depth;
 const { buildSystemPrompt, buildUserMessage, buildAskerBlock } = __m10_prompt;
 const { CASE_SCHEMA } = __m11_schema;
 const { parseCaseJson, coerceCase } = __m12_casefile;
@@ -2814,7 +2901,7 @@ const LINES = {
 };
 
 // ai: "checking" until the viewer answers, then "ready" or "off"
-const state = { bag: [], mainId: null, userAliases: {}, asker: {}, owner: false, unavailableDepths: new Set(), chat: null, stats: null, caseFile: null, isSample: false, busy: false, ai: "checking", aiOffReason: "", sample: null, downloads: null, ctl: null };
+const state = { chatMap: null, coverage: [], bag: [], mainId: null, userAliases: {}, asker: {}, owner: false, unavailableDepths: new Set(), chat: null, stats: null, caseFile: null, isSample: false, busy: false, ai: "checking", aiOffReason: "", sample: null, downloads: null, ctl: null };
 
 // ---------- helpers ----------
 function toast(msg, ms = 2800) {
@@ -2826,6 +2913,7 @@ const settings = () => ({
   persona: document.querySelector('input[name="persona"]:checked')?.value || DEFAULT_PERSONA,
   spice: document.querySelector('input[name="spice"]:checked')?.value || "spicy",
   depth: document.querySelector('input[name="depth"]:checked:not(:disabled)')?.value || DEFAULT_DEPTH,
+  reading: document.querySelector('input[name="read"]:checked')?.value || DEFAULT_READING,
   anon: $("#anon").checked,
 });
 const saveSettings = () => store.set("settings", settings());
@@ -2840,10 +2928,14 @@ function buildPersonas() {
 <label for="pe-${k}"><b>${emo}</b><span>${name}</span><small>${desc}</small></label></div>`).join("");
   if (saved.spice) { const el = document.querySelector(`input[name="spice"][value="${saved.spice}"]`); if (el) el.checked = true; }
   if (typeof saved.anon === "boolean") $("#anon").checked = saved.anon;
+  if (READING[saved.reading]) { const el = document.querySelector(`input[name="read"][value="${saved.reading}"]`); if (el) el.checked = true; }
+  const readNote = () => { $("#read-note").textContent = READING[settings().reading].desc; };
+  document.querySelectorAll('input[name="read"]').forEach((el) => el.addEventListener("change", readNote));
+  readNote();
   if (DEPTHS[saved.depth]) { const el = document.querySelector(`input[name="depth"][value="${saved.depth}"]`); if (el) el.checked = true; }
   document.querySelectorAll('input[name="depth"]').forEach((el) => el.addEventListener("change", () => updateDepthNote()));
   updateDepthNote();
-  document.querySelectorAll('input[name="persona"],input[name="spice"],input[name="depth"],#anon').forEach((el) => el.addEventListener("change", saveSettings));
+  document.querySelectorAll('input[name="persona"],input[name="spice"],input[name="depth"],input[name="read"],#anon').forEach((el) => el.addEventListener("change", saveSettings));
 }
 
 // ---------- capabilities ----------
@@ -2859,6 +2951,7 @@ async function connect() {
     state.owner = Boolean(await user?.isOwner?.().catch(() => false));
     // Depths this viewer's Claude plan can run (the platform may not say; then all stay open).
     const limits = sample ? await sample.limits().catch(() => null) : null;
+    state.maxPrompt = limits?.maxPromptBytes || 0;
     const tiers = Array.isArray(limits?.modelTiers) ? limits.modelTiers : null;
     state.unavailableDepths = new Set(tiers ? Object.keys(DEPTHS).filter((d) => !tiers.includes(DEPTHS[d].tier)) : []);
     applyDepthAccess();
@@ -2948,7 +3041,7 @@ function applyMain() {
 }
 
 function openReport(bag, isSample, pre = {}) {
-  Object.assign(state, { bag, mainId: pre.mainId || pickMain(bag), userAliases: pre.userAliases || {}, caseFile: null, isSample, asker: {}, ranDepth: null });
+  Object.assign(state, { bag, mainId: pre.mainId || pickMain(bag), userAliases: pre.userAliases || {}, caseFile: null, isSample, asker: {}, ranDepth: null, chatMap: null, coverage: [] });
   applyMain();
   $("#landing").hidden = true;
   $("#report").hidden = false;
@@ -2962,7 +3055,7 @@ function openReport(bag, isSample, pre = {}) {
 
 // Back to the investigation card (keeping the bag) so more chats can be added and the case re-run.
 function investigateAgain() {
-  state.caseFile = null; state.ranDepth = null;
+  state.caseFile = null; state.ranDepth = null; state.chatMap = null; state.coverage = [];
   $("#ai-sections").innerHTML = "";
   $("#share-btn").hidden = true;
   $("#case-meta").textContent = metaText();
@@ -2971,6 +3064,25 @@ function investigateAgain() {
   buildJump();
   caseBar.reset();
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+// The most characters that can be sent in one go.
+const hardCap = () => Math.max(60_000, (state.maxPrompt || 262144) - 32_000);
+
+// Tells the viewer, before they start, how much of each chat will be read.
+function readingPlanHtml() {
+  if (!state.bag.length) return "";
+  const s = settings();
+  const { all, budget } = readBudget(s.reading, s.depth, hardCap());
+  let ev;
+  try { ev = prepareEvidence({ bag: state.bag, mainId: state.mainId, userAliases: state.userAliases, hide: false, budget, all }); } catch { return ""; }
+  const n = ev.coverage.length;
+  const list = ev.coverage.map((c) => `${esc(c.title)} <b>${c.pct}%</b>`).join(" · ");
+  let text;
+  if (ev.fullyRead) text = `📖 Will read <b>every message</b> of ${n === 1 ? "this chat" : `all ${n} chats`}.`;
+  else if (s.reading === "all") text = `📖 That's more than fits in one go, so it will read: ${list}. Remove a chat to read the rest in full.`;
+  else text = `📖 Will read a sample: ${list}.`;
+  return `<p class="reading-plan">${text}</p>`;
 }
 
 function renderInterrogateCard(errorMsg = "") {
@@ -2988,9 +3100,10 @@ function renderInterrogateCard(errorMsg = "") {
   <div>
     <h2>🚨 Send in the investigator</h2>
     <p>Your investigator reads the messages and writes their speciality report, plus mugshots, ships &amp; beefs, the unsaid, awards and a fix-it plan.</p>
-    <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span><span class="chip m">${DEPTHS[s.depth].emoji} ${DEPTHS[s.depth].label}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
+    <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span><span class="chip m">${DEPTHS[s.depth].emoji} ${DEPTHS[s.depth].label}</span><span class="chip y">${READING[s.reading].emoji} ${READING[s.reading].label}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
     ${state.isSample ? "" : bagHtml(state)}
     ${state.isSample ? "" : askerHtml(state.stats.people, state.asker)}
+    ${state.isSample ? "" : readingPlanHtml()}
     <p class="note">${esc(note)}</p>
     ${errorMsg ? `<p class="note" style="color:#ffb3b9">⚠️ ${esc(errorMsg)}</p>` : ""}
   </div>
@@ -3035,7 +3148,6 @@ function goLanding() {
 }
 
 // ---------- the investigation ----------
-const MAX_BYTES = 240_000;
 const bytes = (s) => new TextEncoder().encode(s).length;
 
 function buildPrompt(s, ev, asker) {
@@ -3083,10 +3195,15 @@ async function startInvestigation() {
     if (s.depth === "secret" && !state.owner) s.depth = "deep";
     const asker = readAsker();
     state.asker = asker;
-    const prepare = (b) => prepareEvidence({ bag: state.bag, mainId: state.mainId, userAliases: state.userAliases, hide: s.anon, budget: b });
-    let budget = DEPTH_BUDGET[s.depth], ev = prepare(budget), prompt = buildPrompt(s, ev, asker);
-    while (bytes(prompt) > MAX_BYTES && budget > 20_000) { budget = Math.floor(budget * 0.75); ev = prepare(budget); prompt = buildPrompt(s, ev, asker); }
+    const plan = readBudget(s.reading, s.depth, hardCap());
+    const prepare = (b) => prepareEvidence({ bag: state.bag, mainId: state.mainId, userAliases: state.userAliases, hide: s.anon, budget: b, all: plan.all });
+    const maxBytes = (state.maxPrompt || 262144) - 6_000;
+    let budget = plan.budget, ev = prepare(budget), prompt = buildPrompt(s, ev, asker);
+    // Over Claude's input limit (non-English text takes more bytes): trim every chat a little and try again.
+    for (let k = 0; k < 40 && bytes(prompt) > maxBytes && budget > 15_000; k++) { budget = Math.floor(budget * 0.9); ev = prepare(budget); prompt = buildPrompt(s, ev, asker); }
     const anon = ev.anon;
+    state.coverage = ev.coverage;
+    state.chatMap = chatMap(state.bag, state.mainId);
     setStep(1);
     let started = false;
     const want = DEPTHS[s.depth];
@@ -3140,7 +3257,7 @@ function showCase(cf) {
   const d = state.isSample ? null : DEPTHS[state.ranDepth];
   if (d) $("#case-meta").textContent = metaText(`${d.emoji} ${d.label}`);
   $("#interrogate-wrap").innerHTML = "";
-  $("#ai-sections").innerHTML = renderCase(cf, state.stats, { chat: state.chat, me: state.isSample ? "" : state.asker.me });
+  $("#ai-sections").innerHTML = renderCase(cf, state.stats, { chat: state.chat, chats: state.chatMap, coverage: state.coverage, me: state.isSample ? "" : state.asker.me });
   $("#stats-sections").innerHTML = renderStats(state.stats, cf);
   $("#share-btn").hidden = false;
   buildJump();

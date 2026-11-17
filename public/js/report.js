@@ -39,18 +39,20 @@ function when(ts) {
   }
 }
 
-// Receipts: the person's real messages (looked up in the chat by id) and the replies they got.
-function receiptsHtml(list, chat) {
-  if (!chat?.messages?.length || !Array.isArray(list) || !list.length) return "";
-  const msgs = chat.messages;
-  const byId = (id) => {
-    // Only plain ids like "#12" or "12" belong to the main chat. Prefixed ones (B#12) come from context chats.
-    const m0 = String(id ?? "").trim().match(/^#?(\d{1,7})$/);
-    const n = m0 ? parseInt(m0[1], 10) : NaN;
-    const m = Number.isFinite(n) ? msgs[n - 1] : null;
-    return m && m.i === n && m.author ? m : null;
+// Receipts: the person's real messages (looked up in the chats by id) and the replies they got.
+// chats: { "": mainChat, B: contextChat, ... }. Plain ids ("#12") are the main chat, prefixed ones ("B#12") a context chat.
+function receiptsHtml(list, chats) {
+  if (!chats || !Array.isArray(list) || !list.length) return "";
+  const find = (id) => {
+    const m0 = String(id ?? "").trim().match(/^([A-Z]?)#?(\d{1,7})$/);
+    if (!m0) return null;
+    const chat = chats[m0[1]];
+    const n = parseInt(m0[2], 10);
+    const m = chat?.messages?.[n - 1];
+    return m && m.i === n && m.author ? { m, chat, prefix: m0[1] } : null;
   };
-  const nextReply = (m) => {
+  const nextReply = (m, chat) => {
+    const msgs = chat.messages;
     for (let k = m.i; k < Math.min(msgs.length, m.i + 40); k++) {
       const r = msgs[k];
       if (r.ts - m.ts > 12 * 3600e3) break;
@@ -60,12 +62,16 @@ function receiptsHtml(list, chat) {
   };
   const seen = new Set();
   const items = list.map((r) => {
-    const m = byId(r.msg_id);
-    if (!m || seen.has(m.i)) return "";
-    seen.add(m.i);
-    let reply = byId(r.reply_id);
-    let replyTr = r.reply_translation;
-    if (!reply || reply.author === m.author || reply.i <= m.i) { reply = nextReply(m); replyTr = ""; }
+    const hit = find(r.msg_id);
+    if (!hit) return "";
+    const { m, chat, prefix } = hit;
+    const key = prefix + "#" + m.i;
+    if (seen.has(key)) return "";
+    seen.add(key);
+    let reply = null, replyTr = "";
+    const rr = find(r.reply_id);
+    if (rr && rr.chat === chat && rr.m.author !== m.author && rr.m.i > m.i) { reply = rr.m; replyTr = r.reply_translation; }
+    else reply = nextReply(m, chat);
     const body = msgBody(m);
     const tr = m.type === "text" && r.translation && !sameText(r.translation, m.text) ? `<p class="r-tr"><span class="r-en">English</span> ${esc(r.translation)}</p>` : "";
     let replyHtml = "";
@@ -74,8 +80,9 @@ function receiptsHtml(list, chat) {
       const rtr = reply.type === "text" && replyTr && !sameText(replyTr, reply.text) ? `<p class="r-tr"><span class="r-en">English</span> ${esc(replyTr)}</p>` : "";
       replyHtml = `<div class="r-reply"><span class="r-meta">↳ ${esc(reply.author)} replied${reply.ts - m.ts > 60e3 ? ` · ${esc(humanDuration(reply.ts - m.ts))} later` : ""}</span><p class="r-text">${esc(rb)}</p>${rtr}</div>`;
     }
+    const from = prefix ? ` · in ${esc(chat.title || "another chat")}` : "";
     return `<div class="rcpt">
-  <div class="r-msg"><span class="r-meta">#${m.i} · ${esc(when(m.ts))} · ${esc(m.author)}</span><p class="r-text">${esc(body)}</p>${tr}</div>
+  <div class="r-msg"><span class="r-meta">${esc(prefix)}#${m.i} · ${esc(when(m.ts))} · ${esc(m.author)}${from}</span><p class="r-text">${esc(body)}</p>${tr}</div>
   ${replyHtml}
   ${r.note ? `<p class="r-note">${esc(r.note)}</p>` : ""}
 </div>`;
@@ -109,9 +116,11 @@ function autoReceipts(name, chat) {
 }
 
 // ---------------- AI case file ----------------
-// opts.chat: the parsed chat (for receipts). opts.me: the uploader's name, to mark their mugshot.
+// opts.chat: the main chat (for receipts). opts.chats: all chats by id prefix ({ "": main, B: ... }).
+// opts.me: the uploader's name, to mark their mugshot. opts.coverage: how much of each chat was read.
 export function renderCase(cf, stats, opts = {}) {
-  const { chat = null, me = "" } = opts;
+  const { chat = null, me = "", coverage = [] } = opts;
+  const chats = opts.chats || (chat ? { "": chat } : null);
   const people = new Map(stats.people.map((p, i) => [p.name.toLowerCase(), { ...p, idx: i }]));
   const findP = (n) => people.get(String(n || "").toLowerCase());
   const parts = [];
@@ -132,6 +141,7 @@ export function renderCase(cf, stats, opts = {}) {
       <p class="class">Classified as: ${esc(cf.classification)}</p>
       <p class="oneliner">“${esc(cf.one_liner)}”</p>
       <p class="summary">${esc(cf.raid_summary)}</p>
+      ${coverage.length ? `<p class="read-line">📖 Read: ${coverage.map((c) => `${esc(c.title)} <b>${c.pct}%</b>`).join(" · ")}</p>` : ""}
       ${cf.safety_note ? `<p class="callout" style="margin-top:14px">💛 ${esc(cf.safety_note)}</p>` : ""}
       ${cf.minors_suspected ? `<p class="callout" style="margin-top:14px;background:#e4f4ff">This chat looks like it includes people under 18, so romance analysis is switched off.</p>` : ""}
       <span class="stamp">RAIDED</span>
@@ -189,7 +199,7 @@ export function renderCase(cf, stats, opts = {}) {
     <div class="kv"><small>Texting style</small><p>${esc(s.texting_style)}</p></div>
     <div class="traits">${traitRow("chaos", "Chaos")}${traitRow("loyalty", "Loyalty")}${traitRow("drama", "Drama")}${traitRow("braincells", "Braincells")}${traitRow("rizz", "Rizz")}</div>
     ${chips}
-    ${receiptsHtml(s.receipts, chat) || receiptsHtml(autoReceipts(p?.name || s.name, chat), chat).replace("🧾 Receipts", "🧾 Receipts <small>(picked by the page)</small>")}
+    ${receiptsHtml(s.receipts, chats) || receiptsHtml(autoReceipts(p?.name || s.name, chats?.[""]), chats).replace("🧾 Receipts", "🧾 Receipts <small>(picked by the page)</small>")}
   </div>
 </article>`;
   })).join("");

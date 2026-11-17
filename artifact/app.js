@@ -1,7 +1,7 @@
 // FBI, OPEN UP! — one-click version. Runs entirely in the page; the AI
 // investigation asks Claude through the viewer's own Claude account
 // (the artifact `sample` capability), so there is no server and no key.
-import { pickMain, prepareEvidence } from "../public/js/evidence.js";
+import { pickMain, prepareEvidence, chatMap } from "../public/js/evidence.js";
 import { bagHtml, bindBag, addFilesTo, removeFrom, setMainOf } from "../public/js/bag.js";
 import { parseFiles } from "../public/js/parser.js";
 import { computeStats, restoreDeep, scrub } from "../public/js/stats.js";
@@ -9,7 +9,7 @@ import { renderCase, renderStats, roastText, esc } from "../public/js/report.js"
 import { makeShareCard } from "../public/js/share.js";
 import { SAMPLE_CHAT_TEXT, SAMPLE_CASE, SAMPLE_TITLE } from "../public/js/sample.js";
 import { initCaseBar } from "../public/js/casebar.js";
-import { DEPTHS, DEFAULT_DEPTH, DEPTH_BUDGET, DEPTH_HINT, TIER_DEPTH } from "../public/js/depth.js";
+import { DEPTHS, DEFAULT_DEPTH, READING, DEFAULT_READING, readBudget, DEPTH_BUDGET, DEPTH_HINT, TIER_DEPTH } from "../public/js/depth.js";
 import { buildSystemPrompt, buildUserMessage, buildAskerBlock } from "../server/prompt.js";
 import { CASE_SCHEMA } from "../public/js/schema.js";
 import { parseCaseJson, coerceCase } from "../public/js/casefile.js";
@@ -38,7 +38,7 @@ const LINES = {
 };
 
 // ai: "checking" until the viewer answers, then "ready" or "off"
-const state = { bag: [], mainId: null, userAliases: {}, asker: {}, owner: false, unavailableDepths: new Set(), chat: null, stats: null, caseFile: null, isSample: false, busy: false, ai: "checking", aiOffReason: "", sample: null, downloads: null, ctl: null };
+const state = { chatMap: null, coverage: [], bag: [], mainId: null, userAliases: {}, asker: {}, owner: false, unavailableDepths: new Set(), chat: null, stats: null, caseFile: null, isSample: false, busy: false, ai: "checking", aiOffReason: "", sample: null, downloads: null, ctl: null };
 
 // ---------- helpers ----------
 function toast(msg, ms = 2800) {
@@ -50,6 +50,7 @@ const settings = () => ({
   persona: document.querySelector('input[name="persona"]:checked')?.value || DEFAULT_PERSONA,
   spice: document.querySelector('input[name="spice"]:checked')?.value || "spicy",
   depth: document.querySelector('input[name="depth"]:checked:not(:disabled)')?.value || DEFAULT_DEPTH,
+  reading: document.querySelector('input[name="read"]:checked')?.value || DEFAULT_READING,
   anon: $("#anon").checked,
 });
 const saveSettings = () => store.set("settings", settings());
@@ -64,10 +65,14 @@ function buildPersonas() {
 <label for="pe-${k}"><b>${emo}</b><span>${name}</span><small>${desc}</small></label></div>`).join("");
   if (saved.spice) { const el = document.querySelector(`input[name="spice"][value="${saved.spice}"]`); if (el) el.checked = true; }
   if (typeof saved.anon === "boolean") $("#anon").checked = saved.anon;
+  if (READING[saved.reading]) { const el = document.querySelector(`input[name="read"][value="${saved.reading}"]`); if (el) el.checked = true; }
+  const readNote = () => { $("#read-note").textContent = READING[settings().reading].desc; };
+  document.querySelectorAll('input[name="read"]').forEach((el) => el.addEventListener("change", readNote));
+  readNote();
   if (DEPTHS[saved.depth]) { const el = document.querySelector(`input[name="depth"][value="${saved.depth}"]`); if (el) el.checked = true; }
   document.querySelectorAll('input[name="depth"]').forEach((el) => el.addEventListener("change", () => updateDepthNote()));
   updateDepthNote();
-  document.querySelectorAll('input[name="persona"],input[name="spice"],input[name="depth"],#anon').forEach((el) => el.addEventListener("change", saveSettings));
+  document.querySelectorAll('input[name="persona"],input[name="spice"],input[name="depth"],input[name="read"],#anon').forEach((el) => el.addEventListener("change", saveSettings));
 }
 
 // ---------- capabilities ----------
@@ -83,6 +88,7 @@ async function connect() {
     state.owner = Boolean(await user?.isOwner?.().catch(() => false));
     // Depths this viewer's Claude plan can run (the platform may not say; then all stay open).
     const limits = sample ? await sample.limits().catch(() => null) : null;
+    state.maxPrompt = limits?.maxPromptBytes || 0;
     const tiers = Array.isArray(limits?.modelTiers) ? limits.modelTiers : null;
     state.unavailableDepths = new Set(tiers ? Object.keys(DEPTHS).filter((d) => !tiers.includes(DEPTHS[d].tier)) : []);
     applyDepthAccess();
@@ -172,7 +178,7 @@ function applyMain() {
 }
 
 function openReport(bag, isSample, pre = {}) {
-  Object.assign(state, { bag, mainId: pre.mainId || pickMain(bag), userAliases: pre.userAliases || {}, caseFile: null, isSample, asker: {}, ranDepth: null });
+  Object.assign(state, { bag, mainId: pre.mainId || pickMain(bag), userAliases: pre.userAliases || {}, caseFile: null, isSample, asker: {}, ranDepth: null, chatMap: null, coverage: [] });
   applyMain();
   $("#landing").hidden = true;
   $("#report").hidden = false;
@@ -186,7 +192,7 @@ function openReport(bag, isSample, pre = {}) {
 
 // Back to the investigation card (keeping the bag) so more chats can be added and the case re-run.
 function investigateAgain() {
-  state.caseFile = null; state.ranDepth = null;
+  state.caseFile = null; state.ranDepth = null; state.chatMap = null; state.coverage = [];
   $("#ai-sections").innerHTML = "";
   $("#share-btn").hidden = true;
   $("#case-meta").textContent = metaText();
@@ -195,6 +201,25 @@ function investigateAgain() {
   buildJump();
   caseBar.reset();
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+// The most characters that can be sent in one go.
+const hardCap = () => Math.max(60_000, (state.maxPrompt || 262144) - 32_000);
+
+// Tells the viewer, before they start, how much of each chat will be read.
+function readingPlanHtml() {
+  if (!state.bag.length) return "";
+  const s = settings();
+  const { all, budget } = readBudget(s.reading, s.depth, hardCap());
+  let ev;
+  try { ev = prepareEvidence({ bag: state.bag, mainId: state.mainId, userAliases: state.userAliases, hide: false, budget, all }); } catch { return ""; }
+  const n = ev.coverage.length;
+  const list = ev.coverage.map((c) => `${esc(c.title)} <b>${c.pct}%</b>`).join(" · ");
+  let text;
+  if (ev.fullyRead) text = `📖 Will read <b>every message</b> of ${n === 1 ? "this chat" : `all ${n} chats`}.`;
+  else if (s.reading === "all") text = `📖 That's more than fits in one go, so it will read: ${list}. Remove a chat to read the rest in full.`;
+  else text = `📖 Will read a sample: ${list}.`;
+  return `<p class="reading-plan">${text}</p>`;
 }
 
 function renderInterrogateCard(errorMsg = "") {
@@ -212,9 +237,10 @@ function renderInterrogateCard(errorMsg = "") {
   <div>
     <h2>🚨 Send in the investigator</h2>
     <p>Your investigator reads the messages and writes their speciality report, plus mugshots, ships &amp; beefs, the unsaid, awards and a fix-it plan.</p>
-    <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span><span class="chip m">${DEPTHS[s.depth].emoji} ${DEPTHS[s.depth].label}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
+    <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span><span class="chip m">${DEPTHS[s.depth].emoji} ${DEPTHS[s.depth].label}</span><span class="chip y">${READING[s.reading].emoji} ${READING[s.reading].label}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
     ${state.isSample ? "" : bagHtml(state)}
     ${state.isSample ? "" : askerHtml(state.stats.people, state.asker)}
+    ${state.isSample ? "" : readingPlanHtml()}
     <p class="note">${esc(note)}</p>
     ${errorMsg ? `<p class="note" style="color:#ffb3b9">⚠️ ${esc(errorMsg)}</p>` : ""}
   </div>
@@ -259,7 +285,6 @@ function goLanding() {
 }
 
 // ---------- the investigation ----------
-const MAX_BYTES = 240_000;
 const bytes = (s) => new TextEncoder().encode(s).length;
 
 function buildPrompt(s, ev, asker) {
@@ -307,10 +332,15 @@ async function startInvestigation() {
     if (s.depth === "secret" && !state.owner) s.depth = "deep";
     const asker = readAsker();
     state.asker = asker;
-    const prepare = (b) => prepareEvidence({ bag: state.bag, mainId: state.mainId, userAliases: state.userAliases, hide: s.anon, budget: b });
-    let budget = DEPTH_BUDGET[s.depth], ev = prepare(budget), prompt = buildPrompt(s, ev, asker);
-    while (bytes(prompt) > MAX_BYTES && budget > 20_000) { budget = Math.floor(budget * 0.75); ev = prepare(budget); prompt = buildPrompt(s, ev, asker); }
+    const plan = readBudget(s.reading, s.depth, hardCap());
+    const prepare = (b) => prepareEvidence({ bag: state.bag, mainId: state.mainId, userAliases: state.userAliases, hide: s.anon, budget: b, all: plan.all });
+    const maxBytes = (state.maxPrompt || 262144) - 6_000;
+    let budget = plan.budget, ev = prepare(budget), prompt = buildPrompt(s, ev, asker);
+    // Over Claude's input limit (non-English text takes more bytes): trim every chat a little and try again.
+    for (let k = 0; k < 40 && bytes(prompt) > maxBytes && budget > 15_000; k++) { budget = Math.floor(budget * 0.9); ev = prepare(budget); prompt = buildPrompt(s, ev, asker); }
     const anon = ev.anon;
+    state.coverage = ev.coverage;
+    state.chatMap = chatMap(state.bag, state.mainId);
     setStep(1);
     let started = false;
     const want = DEPTHS[s.depth];
@@ -364,7 +394,7 @@ function showCase(cf) {
   const d = state.isSample ? null : DEPTHS[state.ranDepth];
   if (d) $("#case-meta").textContent = metaText(`${d.emoji} ${d.label}`);
   $("#interrogate-wrap").innerHTML = "";
-  $("#ai-sections").innerHTML = renderCase(cf, state.stats, { chat: state.chat, me: state.isSample ? "" : state.asker.me });
+  $("#ai-sections").innerHTML = renderCase(cf, state.stats, { chat: state.chat, chats: state.chatMap, coverage: state.coverage, me: state.isSample ? "" : state.asker.me });
   $("#stats-sections").innerHTML = renderStats(state.stats, cf);
   $("#share-btn").hidden = false;
   buildJump();

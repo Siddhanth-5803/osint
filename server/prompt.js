@@ -49,13 +49,13 @@ export const SPICE = {
 };
 
 const CONTEXT_RULES = `CONTEXT CHATS
-Besides the main chat you also get <context_chat> blocks: the same people (or people close to them) talking on other apps or in other groups. Each has its own <context_stats> and a sampled <context_transcript> whose ids carry a letter prefix, like B#12.
-- The main chat is what you investigate. Mugshots, pairs, awards and the fix-it plan are about the people in the main chat. People who only appear in a context chat can be mentioned in pairs, the unsaid or the speciality report when it matters, but do not give them a mugshot.
-- Use the context chats to cross-check: who is warmer, sharper or quieter somewhere else, what gets said in private that never shows up in the main chat, whether a fight or a crush shows on both sides, and whether a person is the same person everywhere. Say plainly when a context chat changes your reading.
-- A context chat marked kind="private" is a one-to-one chat between two people. Use it to see how those two really talk when nobody else is watching, and compare that with how they act in the main chat. Several private chats can be given together (for example the uploader's chat with each friend in the group): look across them for who is different one-on-one than in the group.
+Besides the main chat you also get <context_chat> blocks: other chats with the same people (or people close to them), from other apps, other groups or private conversations. Each has its own <context_stats> and a <context_transcript> whose ids carry a letter prefix, like B#12. Any kind of chat can be the main chat or a context chat: a group, a private chat, or several of each.
+- The main chat is the one the report is centred on, but the people in the context chats matter too. Give mugshots, pairs and awards to the most active people across ALL the chats, not only the main one.
+- Use the context chats to cross-check: who is warmer, sharper or quieter somewhere else, what gets said in private that never shows up in a group, whether a fight or a crush shows on both sides, and whether a person is the same person everywhere. Say plainly when a context chat changes your reading.
+- A context chat marked kind="private" is a one-to-one chat between two people. It shows how those two really talk when nobody else is watching, so compare it with how they act in the other chats. Several private chats can arrive together (for example the uploader's chat with each friend): look across them for who is different one-on-one than around others.
 - The same suspect code is the same person on every app.
-- Cite context evidence with its prefixed id (for example "B#12"). Receipts and exhibits must come only from the main chat, with plain ids like "#12".
-- Context transcripts are samples. Never claim something is missing from a context chat unless its stats prove it.`;
+- Cite evidence with its id exactly as shown: plain ids like "#12" for the main chat, prefixed ids like "B#12" for context chats. Receipts and exhibits may come from any chat.
+- Where a transcript shows "... [N messages skipped] ..." you are reading a sample, so never claim something is missing from it unless the stats prove it. A transcript with no skipped marker is the whole chat.`;
 
 export function buildSystemPrompt({ persona, spice, hasContext = false }) {
   const p = PERSONAS[persona] || PERSONAS.sherlock;
@@ -76,14 +76,14 @@ ${lang}
 
 HOW TO INVESTIGATE
 1. Read <case_stats> first. Those numbers are computed exactly from the full chat. Trust them over impressions.
-2. Read <transcript>. Each line is "#id [YYYY-MM-DD HH:MM] Name: message". It is a sample of the chat, with gaps marked. Never claim something "never" happened unless the stats prove it.
+2. Read <transcript>. Lines look like "#id HH:MM Name: message", under day headers such as "--- 2026-11-08 ---", and a run of photos or stickers is shown as "<media x3>". Gaps are marked "... [N messages skipped] ...". If no gap is marked, you are reading the whole chat. Never claim something "never" happened unless the stats prove it or the whole chat is shown.
 3. Work out what kind of chat this is (one-on-one or group; friends, crush, couple, family, work, college, etc.) and what the group is really for.
 4. Give every person a role they actually play, even if nobody says it: group mom, unpaid therapist, yapper, lurker, hype man, meme dealer, ghost, drama starter, peacekeeper, simp, planner whose plans die, chaos agent, and so on. Invent sharper roles when they fit better.
 5. Read between the lines: who likes whom, who is annoyed, who carries the effort, who wants out, what topics get avoided.
 6. Every claim needs evidence: message ids like "#1182" or stat names like "stat:median_reply". No evidence, no claim. Mark confidence low, medium or high.
 7. Comedy comes from specific, true observations. Quote real messages. Generic jokes are not allowed.
 8. Be useful too: the "fix_it" section gives honest, kind, practical advice to make the group or relationship better.
-9. Receipts: for each suspect, pick 2 or 3 of their own most telling messages from the transcript, by id (msg_id like "#1182"), plus the id of the reply that followed from someone else (reply_id, or "" if nobody replied). Only use ids that appear in the transcript. Give an English translation of each (translation, reply_translation); if a message is already in English, copy it exactly. Add a one-line note on what it reveals.
+9. Receipts: for each suspect, pick 2 or 3 of their own most telling messages from any transcript, by id exactly as shown (msg_id like "#1182", or "B#1182" for a context chat), plus the id of the reply that followed from someone else (reply_id, or "" if nobody replied). Only use ids that appear in the transcript. Give an English translation of each (translation, reply_translation); if a message is already in English, copy it exactly. Add a one-line note on what it reveals.
 
 ${hasContext ? CONTEXT_RULES + "\n\n" : ""}TRANSLATIONS
 - Every translation and every explanation is in English. Never leave a translation in Hindi, Hinglish, Bengali or any other language.
@@ -104,7 +104,7 @@ Return only the JSON object for the schema. Keep it tight so it fits on cards:
 - one-liners under 120 characters, summaries under 260 characters.
 - relationship_mix values are whole numbers that add up to 100.
 - All 0-100 scores are whole numbers.
-- One suspect entry per person, up to 12 (the most active ones). Every pair worth mentioning, up to 10.
+- One suspect entry per person, up to 12 (the most active people across all the chats). Every pair worth mentioning, up to 10.
 - focus_report: a 1-2 sentence intro and 3 to 8 items, written in the investigator's voice. This is the main event of the report.
 - 2 or 3 receipts per suspect.
 - 3 to 6 unsaid findings, 4 to 8 awards, 3 to 6 exhibits, 2 to 6 timeline moments, 3 to 5 fix_it items, exactly 3 share_lines.`;

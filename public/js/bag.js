@@ -37,7 +37,7 @@ export function bagHtml(t, { fileId = "bag-file", light = false, removeLast = fa
   const room = bag.length < MAX_CONTEXT + 1;
   const hint = multi
     ? "Pick the main chat. The others add context."
-    : "Optional: drop more chats. A group chat plus private chats with each friend gives the best picture.";
+    : "Optional: drop more chats of any kind (groups, private chats, other apps). More context gives a better picture.";
   return `<div class="ebag${light ? " light" : ""}">
   <div class="bag-head"><b>📚 Evidence bag <small>(${bag.length} of ${MAX_CONTEXT + 1})</small></b><small>${hint}</small></div>
   ${rows}

@@ -1,4 +1,4 @@
-import { pickMain, prepareEvidence } from "./evidence.js";
+import { pickMain, prepareEvidence, chatMap } from "./evidence.js";
 import { bagHtml, bindBag, addFilesTo, removeFrom, setMainOf } from "./bag.js";
 import { parseFiles } from "./parser.js";
 import { computeStats, restoreDeep, scrub } from "./stats.js";
@@ -8,7 +8,7 @@ import { renderCase, renderStats, roastText, esc } from "./report.js";
 import { makeShareCard, shareOrDownload } from "./share.js";
 import { SAMPLE_CHAT_TEXT, SAMPLE_CASE, SAMPLE_TITLE } from "./sample.js";
 import { initCaseBar } from "./casebar.js";
-import { DEPTHS, DEFAULT_DEPTH, DEPTH_BUDGET } from "./depth.js";
+import { DEPTHS, DEFAULT_DEPTH, READING, DEFAULT_READING, readBudget } from "./depth.js";
 
 const $ = (s) => document.querySelector(s);
 const store = {
@@ -25,7 +25,7 @@ const PERSONA_INFO = {
 };
 const DEFAULT_PERSONA = "sherlock";
 
-const state = { bag: [], mainId: null, userAliases: {}, asker: {}, config: null, chat: null, stats: null, caseFile: null, isSample: false, busy: false };
+const state = { chatMap: null, coverage: [], bag: [], mainId: null, userAliases: {}, asker: {}, config: null, chat: null, stats: null, caseFile: null, isSample: false, busy: false };
 
 // ---------- helpers ----------
 function toast(msg, ms = 2600) {
@@ -37,6 +37,7 @@ const settings = () => ({
   persona: document.querySelector('input[name="persona"]:checked')?.value || DEFAULT_PERSONA,
   spice: document.querySelector('input[name="spice"]:checked')?.value || "spicy",
   depth: document.querySelector('input[name="depth"]:checked:not(:disabled)')?.value || DEFAULT_DEPTH,
+  reading: document.querySelector('input[name="read"]:checked')?.value || DEFAULT_READING,
   anon: $("#anon").checked,
 });
 function saveSettings() { store.set("settings", settings()); }
@@ -62,11 +63,15 @@ function buildPersonas() {
 <label for="pe-${k}"><b>${emo}</b><span>${name}</span><small>${desc}</small></label></div>`).join("");
   if (saved.spice) { const el = document.querySelector(`input[name="spice"][value="${saved.spice}"]`); if (el) el.checked = true; }
   if (typeof saved.anon === "boolean") $("#anon").checked = saved.anon;
+  if (READING[saved.reading]) { const el = document.querySelector(`input[name="read"][value="${saved.reading}"]`); if (el) el.checked = true; }
+  const readNote = () => { $("#read-note").textContent = READING[settings().reading].desc; };
+  document.querySelectorAll('input[name="read"]').forEach((el) => el.addEventListener("change", readNote));
+  readNote();
   if (DEPTHS[saved.depth]) { const el = document.querySelector(`input[name="depth"][value="${saved.depth}"]`); if (el) el.checked = true; }
   const note = () => { $("#depth-note").textContent = DEPTHS[settings().depth].desc; };
   document.querySelectorAll('input[name="depth"]').forEach((el) => el.addEventListener("change", note));
   note();
-  document.querySelectorAll('input[name="persona"],input[name="spice"],input[name="depth"],#anon').forEach((el) => el.addEventListener("change", saveSettings));
+  document.querySelectorAll('input[name="persona"],input[name="spice"],input[name="depth"],input[name="read"],#anon').forEach((el) => el.addEventListener("change", saveSettings));
 }
 
 function priceLabel() {
@@ -152,7 +157,7 @@ function applyMain() {
 }
 
 function openReport(bag, isSample, pre = {}) {
-  Object.assign(state, { bag, mainId: pre.mainId || pickMain(bag), userAliases: pre.userAliases || {}, caseFile: null, isSample, asker: {}, ranDepth: null });
+  Object.assign(state, { bag, mainId: pre.mainId || pickMain(bag), userAliases: pre.userAliases || {}, caseFile: null, isSample, asker: {}, ranDepth: null, chatMap: null, coverage: [] });
   applyMain();
   $("#landing").hidden = true;
   $("#report").hidden = false;
@@ -166,7 +171,7 @@ function openReport(bag, isSample, pre = {}) {
 
 // Back to the investigation card (keeping the bag) so more chats can be added and the case re-run.
 function investigateAgain() {
-  state.caseFile = null; state.ranDepth = null;
+  state.caseFile = null; state.ranDepth = null; state.chatMap = null; state.coverage = [];
   $("#ai-sections").innerHTML = "";
   $("#share-btn").hidden = true;
   $("#case-meta").textContent = metaText();
@@ -175,6 +180,25 @@ function investigateAgain() {
   buildJump();
   caseBar.reset();
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+// The most characters that can be sent in one go.
+const hardCap = () => state.config?.maxReadChars || 600_000;
+
+// Tells the viewer, before they start, how much of each chat will be read.
+function readingPlanHtml() {
+  if (!state.bag.length) return "";
+  const s = settings();
+  const { all, budget } = readBudget(s.reading, s.depth, hardCap());
+  let ev;
+  try { ev = prepareEvidence({ bag: state.bag, mainId: state.mainId, userAliases: state.userAliases, hide: false, budget, all }); } catch { return ""; }
+  const n = ev.coverage.length;
+  const list = ev.coverage.map((c) => `${esc(c.title)} <b>${c.pct}%</b>`).join(" · ");
+  let text;
+  if (ev.fullyRead) text = `📖 Will read <b>every message</b> of ${n === 1 ? "this chat" : `all ${n} chats`}.`;
+  else if (s.reading === "all") text = `📖 That's more than fits in one go, so it will read: ${list}. Remove a chat to read the rest in full.`;
+  else text = `📖 Will read a sample: ${list}.`;
+  return `<p class="reading-plan">${text}</p>`;
 }
 
 function renderInterrogateCard(errorMsg = "") {
@@ -196,9 +220,10 @@ function renderInterrogateCard(errorMsg = "") {
   <div>
     <h2>🚨 Send in the investigator</h2>
     <p>The stats below are free. Your investigator reads the messages and writes their speciality report, plus mugshots, ships &amp; beefs, the unsaid, awards and a fix-it plan.</p>
-    <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span><span class="chip m">${DEPTHS[s.depth].emoji} ${DEPTHS[s.depth].label}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
+    <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span><span class="chip m">${DEPTHS[s.depth].emoji} ${DEPTHS[s.depth].label}</span><span class="chip y">${READING[s.reading].emoji} ${READING[s.reading].label}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
     ${state.isSample ? "" : bagHtml(state)}
     ${state.isSample ? "" : askerHtml(state.stats.people, state.asker || {})}
+    ${state.isSample ? "" : readingPlanHtml()}
     <p class="note">${esc(priceNote)}</p>
     ${errorMsg ? `<p class="note" style="color:#ffb3b9">⚠️ ${esc(errorMsg)}</p>` : ""}
   </div>
@@ -266,8 +291,11 @@ async function startInterrogation(payment = null) {
   try {
     setStep(0); await tick();
     setStep(1); await tick();
-    const ev = prepareEvidence({ bag: state.bag, mainId: state.mainId, userAliases: state.userAliases, hide: s.anon, budget: DEPTH_BUDGET[s.depth] || 150_000 });
+    const plan = readBudget(s.reading, s.depth, hardCap());
+    const ev = prepareEvidence({ bag: state.bag, mainId: state.mainId, userAliases: state.userAliases, hide: s.anon, budget: plan.budget, all: plan.all });
     const anon = ev.anon;
+    state.coverage = ev.coverage;
+    state.chatMap = chatMap(state.bag, state.mainId);
     const a = state.asker || {};
     const asker = {
       me: a.me ? (anon ? anon.name(a.me) : a.me) : "",
@@ -307,7 +335,7 @@ async function runSample(s) {
 function showCase(cf) {
   state.caseFile = cf;
   $("#interrogate-wrap").innerHTML = "";
-  $("#ai-sections").innerHTML = renderCase(cf, state.stats, { chat: state.chat, me: state.isSample ? "" : state.asker?.me || "" });
+  $("#ai-sections").innerHTML = renderCase(cf, state.stats, { chat: state.chat, chats: state.chatMap, coverage: state.coverage, me: state.isSample ? "" : state.asker?.me || "" });
   $("#stats-sections").innerHTML = renderStats(state.stats, cf);
   $("#share-btn").hidden = false;
   buildJump();

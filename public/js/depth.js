@@ -16,3 +16,17 @@ export const DEPTH_HINT = {
 // Which depth a model tier corresponds to, for telling the viewer what actually ran.
 export const TIER_DEPTH = { quick: "quick", default: "standard", complex: "deep" };
 export const DEFAULT_DEPTH = "standard";
+
+// How much of each chat the investigator reads.
+export const READING = {
+  all: { emoji: "📖", label: "Everything", desc: "Reads every message of every chat, as long as it fits. Slowest, and uses the most of your Claude." },
+  balanced: { emoji: "⚖️", label: "Balanced", desc: "Reads a large sample of each chat." },
+  skim: { emoji: "👀", label: "Quick skim", desc: "Reads a small sample of each chat. Fastest." },
+};
+export const DEFAULT_READING = "all";
+// hardCap: the most characters that can be sent at all (set by the page or the server).
+export function readBudget(reading, depth, hardCap) {
+  if (reading === "all") return { all: true, budget: hardCap };
+  const base = DEPTH_BUDGET[depth] || 150_000;
+  return { all: false, budget: Math.min(hardCap, reading === "skim" ? Math.round(base * 0.3) : base) };
+}
