@@ -450,3 +450,18 @@ td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 .bag-alias-row small { color: #c9d4f5; }
 .bag-alias-row select { font: inherit; color: var(--navy); background: var(--cloud); border: 2px solid var(--navy); border-radius: 10px; padding: 6px 8px; width: 100%; min-width: 0; }
 @media (max-width: 520px) { .bag-alias-row { grid-template-columns: 1fr; gap: 4px; } }
+
+/* landing stage: the bag on the white card */
+#landing-bag { display: grid; gap: 12px; margin-top: 14px; }
+#landing-bag:empty { display: none; }
+.ebag.light { border-top: 0; padding-top: 0; margin-top: 0; }
+.ebag.light .bag-head { color: var(--navy); }
+.ebag.light .bag-head small, .ebag.light .bag-name small, .ebag.light .bag-auto, .ebag.light .bag-full, .ebag.light .bag-alias-row small { color: var(--navy-soft); }
+.ebag.light .bag-row { background: var(--sky-2); border-color: var(--navy); }
+.ebag.light .bag-row.is-main { background: #fff4c7; }
+.ebag.light .bag-name { color: var(--navy); }
+.ebag.light .bag-pick, .ebag.light .bag-tag { color: var(--navy); font-weight: 700; }
+.ebag.light .bag-pick input { accent-color: var(--blue); }
+.ebag.light .bag-x { border-color: var(--navy); color: var(--navy); }
+.ebag.light .bag-alias { background: var(--sky-2); border-color: var(--navy); color: var(--navy); }
+.ebag.light .bag-alias summary { color: var(--navy); }

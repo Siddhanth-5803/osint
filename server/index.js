@@ -94,13 +94,15 @@ async function handleApi(req, res, url) {
       note: typeof rawAsker?.note === "string" ? rawAsker.note.slice(0, 600) : "",
     };
     // Optional extra chats (other apps) sent as context: at most 3, each capped in size.
-    const contexts = (Array.isArray(body.contexts) ? body.contexts : []).slice(0, 3).map((c, i) => ({
+    const contexts = (Array.isArray(body.contexts) ? body.contexts : []).slice(0, 8).map((c, i) => ({
       label: String.fromCharCode(66 + i),
       source: typeof c?.source === "string" ? c.source.slice(0, 20) : "",
+      kind: c?.kind === "group" ? "group" : "private",
       title: typeof c?.title === "string" ? c.title.slice(0, 120) : "",
       stats: c?.stats && typeof c.stats === "object" && JSON.stringify(c.stats).length < 20_000 ? c.stats : {},
-      transcript: typeof c?.transcript === "string" ? c.transcript.slice(0, 160_000) : "",
+      transcript: typeof c?.transcript === "string" ? c.transcript.slice(0, 100_000) : "",
     })).filter((c) => c.transcript.length >= 20);
+    if (contexts.reduce((n, c) => n + c.transcript.length, 0) > 320_000) return send(res, 413, { error: "The extra chats are too big to send. Remove one or use shorter exports." });
     if (!stats || typeof stats !== "object" || typeof transcript !== "string" || transcript.length < 20) {
       return send(res, 400, { error: "No chat found in the request." });
     }

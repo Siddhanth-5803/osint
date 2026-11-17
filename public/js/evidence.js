@@ -3,7 +3,7 @@
 import { parseFiles } from "./parser.js";
 import { computeStats, statsForAi, contextSummary, buildTranscript, makeNameMap, scrub } from "./stats.js";
 
-export const MAX_CONTEXT = 3; // extra chats on top of the main one
+export const MAX_CONTEXT = 8; // extra chats on top of the main one (a group plus a private chat with each friend)
 export const NOT_SAME = "__not_same__"; // alias choice meaning "a different person"
 const SOURCE_NAMES = { whatsapp: "WhatsApp", telegram: "Telegram", instagram: "Instagram" };
 export const sourceName = (s) => SOURCE_NAMES[s] || "Chat";
@@ -87,8 +87,13 @@ export function addToBag(bag, items) {
   return { bag: out, notes };
 }
 
-// The biggest chat is the default main chat.
-export const pickMain = (items) => items.reduce((best, it) => (!best || it.stats.totalMessages > best.stats.totalMessages ? it : best), null)?.id ?? null;
+// A group chat is the default main chat (private chats are then its context); otherwise the biggest chat.
+export const isGroup = (it) => it.stats.people.length >= 3;
+export const pickMain = (items) => {
+  const groups = items.filter(isGroup);
+  const pool = groups.length ? groups : items;
+  return pool.reduce((best, it) => (!best || it.stats.totalMessages > best.stats.totalMessages ? it : best), null)?.id ?? null;
+};
 
 // ---------- the same person on different apps ----------
 const norm = (s) => String(s || "").toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]/gu, "");
@@ -144,7 +149,7 @@ export function analysePeople(bag, mainId, userAliases = {}) {
 // The context chats share part of the reading budget; the main chat keeps the rest.
 export function planBudget(total, n) {
   if (!n) return { main: total, each: 0 };
-  const share = Math.min(0.4, 0.15 + 0.1 * n);
+  const share = Math.min(0.5, 0.15 + 0.07 * n);
   return { main: Math.round(total * (1 - share)), each: Math.round((total * share) / n) };
 }
 
@@ -178,6 +183,7 @@ export function prepareEvidence({ bag, mainId, userAliases = {}, hide = true, bu
     return {
       label,
       source: c.chat.source,
+      kind: isGroup(c) ? "group" : "private",
       title: summary.title,
       stats: summary,
       transcript: buildTranscript(c.chat, c.stats, { anon, budget: plan.each, idPrefix: label }),

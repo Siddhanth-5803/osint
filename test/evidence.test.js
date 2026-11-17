@@ -43,7 +43,7 @@ test("biggest chat is the default main; bag has a size limit and no duplicates",
   const { bag, notes } = addToBag(items, items);
   assert.equal(bag.length, 3);
   assert.equal(notes.length, 3);
-  const many = [...items, ...[1, 2, 3].map((n) => ({ ...items[0], id: "x" + n, stats: { ...items[0].stats, totalMessages: 1000 + n }, chat: { ...items[0].chat, title: "t" + n } }))];
+  const many = [...items, ...Array.from({ length: MAX_CONTEXT + 3 }, (_, k) => k + 1).map((n) => ({ ...items[0], id: "x" + n, stats: { ...items[0].stats, totalMessages: 1000 + n }, chat: { ...items[0].chat, title: "t" + n } }))];
   const capped = addToBag([], many);
   assert.equal(capped.bag.length, MAX_CONTEXT + 1);
 });
@@ -101,7 +101,7 @@ test("budget plan and prompt blocks", () => {
   const p2 = planBudget(100_000, 2);
   assert.ok(p2.main + p2.each * 2 <= 100_000 && p2.main > p2.each * 2);
   const msg = buildUserMessage({ stats: { a: 1 }, transcript: "#1 x", contexts: [{ label: "B", source: 'insta"gram', title: "a<b>c", stats: { z: 1 }, transcript: "B#1 y" }] });
-  assert.match(msg, /<context_chat id="B" source="instagram" title="abc">/);
+  assert.match(msg, /<context_chat id="B" source="instagram" kind="private" title="abc">/);
   assert.match(msg, /<context_transcript>\nB#1 y/);
   assert.match(buildSystemPrompt({ persona: "sherlock", spice: "spicy", hasContext: true }), /CONTEXT CHATS/);
   assert.doesNotMatch(buildSystemPrompt({ persona: "sherlock", spice: "spicy" }), /CONTEXT CHATS/);
@@ -114,4 +114,33 @@ test("a context-style id never pulls a message from the main chat", () => {
   cf.suspects[0].receipts = [{ msg_id: "B#42", translation: "", reply_id: "", reply_translation: "", note: "context id" }];
   const html = renderCase(cf, main.stats, { chat: main.chat });
   assert.doesNotMatch(html, /context id/, "prefixed ids are ignored by receipts");
+});
+
+test("a group is the default main chat even when a private chat is bigger; private chats are marked", () => {
+  const { items } = bagOf();
+  const group = items.find((i) => i.chat.source === "whatsapp");
+  const dm = { ...items.find((i) => i.chat.source === "instagram"), id: "dm" };
+  dm.stats = { ...dm.stats, totalMessages: 99999, people: dm.stats.people.slice(0, 2) };
+  assert.equal(pickMain([dm, group]), group.id);
+  assert.equal(pickMain([dm]), "dm");
+  const ev = prepareEvidence({ bag: [group, dm], mainId: group.id, hide: true, budget: 30_000 });
+  assert.equal(ev.contexts[0].kind, "private");
+  const msg = buildUserMessage({ stats: {}, transcript: "#1 x", contexts: ev.contexts });
+  assert.match(msg, /kind="private"/);
+  assert.match(buildSystemPrompt({ persona: "sherlock", spice: "spicy", hasContext: true }), /kind="private"/);
+});
+
+test("a group plus a private chat with each friend fits in one bag", () => {
+  const { items } = bagOf();
+  const group = items.find((i) => i.chat.source === "whatsapp");
+  const dms = Array.from({ length: MAX_CONTEXT }, (_, k) => ({ ...items[1], id: "d" + k, stats: { ...items[1].stats, totalMessages: 100 + k, people: items[1].stats.people.slice(0, 2) }, chat: { ...items[1].chat, title: "DM " + k } }));
+  const { bag } = addToBag([group], dms);
+  assert.equal(bag.length, MAX_CONTEXT + 1);
+  const ev = prepareEvidence({ bag, mainId: group.id, hide: true, budget: 100_000 });
+  assert.equal(ev.contexts.length, MAX_CONTEXT);
+  assert.equal(new Set(ev.contexts.map((c) => c.label)).size, MAX_CONTEXT);
+  const total = ev.mainTranscript.length + ev.contexts.reduce((n, c) => n + c.transcript.length, 0);
+  assert.ok(total < 100_000 + 8000, "total stays near the budget");
+  const plan = planBudget(100_000, MAX_CONTEXT);
+  assert.ok(plan.main >= 50_000 && plan.each > 3_000, "the main chat keeps at least half and each private chat still gets a useful slice");
 });

@@ -52,13 +52,14 @@
           <h3>Hand over the evidence</h3>
           <p>Drop your chat export here: a WhatsApp <b>.zip</b> or <b>.txt</b>, Telegram <b>result.json</b>, or Instagram <b>message_1.json</b>.</p>
           <span class="drop-actions">
-            <span class="btn primary">📂 Choose file</span>
+            <span class="btn primary">📂 Choose file(s)</span>
           </span>
           <small>Your file is opened on this device. Nothing is uploaded until you start the interrogation.</small>
-          <small><b>Tip:</b> you can drop 2 or 3 exports from different apps together, like WhatsApp and Instagram. The biggest becomes the main chat and the rest add context.</small>
+          <small><b>Tip:</b> you can drop several chats together, or add more after the first one: a group chat plus your private chats with each friend gives the best picture (up to 9 chats). One chat works fine too.</small>
         </label>
         <input type="file" id="file" accept=".zip,.txt,.json,application/zip,text/plain,application/json" multiple hidden>
-        <div class="price-strip" id="price-strip">
+        <div id="landing-bag"></div>
+                <div class="price-strip" id="price-strip">
           <button class="btn small blue" type="button" id="back-case" hidden>↩ Back to your case</button>
           <button class="btn small" type="button" id="sample-btn">🕵️ Try a sample raid</button>
           <span id="price-text"></span>

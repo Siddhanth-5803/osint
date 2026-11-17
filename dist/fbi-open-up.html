@@ -458,6 +458,21 @@ td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 .bag-alias-row select { font: inherit; color: var(--navy); background: var(--cloud); border: 2px solid var(--navy); border-radius: 10px; padding: 6px 8px; width: 100%; min-width: 0; }
 @media (max-width: 520px) { .bag-alias-row { grid-template-columns: 1fr; gap: 4px; } }
 
+/* landing stage: the bag on the white card */
+#landing-bag { display: grid; gap: 12px; margin-top: 14px; }
+#landing-bag:empty { display: none; }
+.ebag.light { border-top: 0; padding-top: 0; margin-top: 0; }
+.ebag.light .bag-head { color: var(--navy); }
+.ebag.light .bag-head small, .ebag.light .bag-name small, .ebag.light .bag-auto, .ebag.light .bag-full, .ebag.light .bag-alias-row small { color: var(--navy-soft); }
+.ebag.light .bag-row { background: var(--sky-2); border-color: var(--navy); }
+.ebag.light .bag-row.is-main { background: #fff4c7; }
+.ebag.light .bag-name { color: var(--navy); }
+.ebag.light .bag-pick, .ebag.light .bag-tag { color: var(--navy); font-weight: 700; }
+.ebag.light .bag-pick input { accent-color: var(--blue); }
+.ebag.light .bag-x { border-color: var(--navy); color: var(--navy); }
+.ebag.light .bag-alias { background: var(--sky-2); border-color: var(--navy); color: var(--navy); }
+.ebag.light .bag-alias summary { color: var(--navy); }
+
 /* one-click version: the platform already pads the page for phone notches */
 body { padding-top: 0; padding-bottom: 0; }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 30; background: var(--sky); }
@@ -503,13 +518,14 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
           <h3>Hand over the evidence</h3>
           <p>Drop your chat export here: a WhatsApp <b>.zip</b> or <b>.txt</b>, Telegram <b>result.json</b>, or Instagram <b>message_1.json</b>.</p>
           <span class="drop-actions">
-            <span class="btn primary">📂 Choose file</span>
+            <span class="btn primary">📂 Choose file(s)</span>
           </span>
           <small>Your file is opened on this device. Nothing leaves this page until you start the investigation.</small>
-          <small><b>Tip:</b> you can drop 2 or 3 exports from different apps together, like WhatsApp and Instagram. The biggest becomes the main chat and the rest add context.</small>
+          <small><b>Tip:</b> you can drop several chats together, or add more after the first one: a group chat plus your private chats with each friend gives the best picture (up to 9 chats). One chat works fine too.</small>
         </label>
         <input type="file" id="file" accept=".zip,.txt,.json,application/zip,text/plain,application/json" multiple hidden>
-        <div class="price-strip" id="price-strip">
+        <div id="landing-bag"></div>
+                <div class="price-strip" id="price-strip">
           <button class="btn small blue" type="button" id="back-case" hidden>↩ Back to your case</button>
           <button class="btn small" type="button" id="sample-btn">🕵️ Try a sample raid</button>
           <span id="ai-text"></span>
@@ -1183,7 +1199,7 @@ const __m1_evidence = (() => {
 // Shared by the website, the one-click page and the tests.
 const { parseFiles } = __m2_parser;
 const { computeStats, statsForAi, contextSummary, buildTranscript, makeNameMap, scrub } = __m3_stats;
-const MAX_CONTEXT = 3; // extra chats on top of the main one
+const MAX_CONTEXT = 8; // extra chats on top of the main one (a group plus a private chat with each friend)
 const NOT_SAME = "__not_same__"; // alias choice meaning "a different person"
 const SOURCE_NAMES = { whatsapp: "WhatsApp", telegram: "Telegram", instagram: "Instagram" };
 const sourceName = (s) => SOURCE_NAMES[s] || "Chat";
@@ -1267,8 +1283,13 @@ function addToBag(bag, items) {
   return { bag: out, notes };
 }
 
-// The biggest chat is the default main chat.
-const pickMain = (items) => items.reduce((best, it) => (!best || it.stats.totalMessages > best.stats.totalMessages ? it : best), null)?.id ?? null;
+// A group chat is the default main chat (private chats are then its context); otherwise the biggest chat.
+const isGroup = (it) => it.stats.people.length >= 3;
+const pickMain = (items) => {
+  const groups = items.filter(isGroup);
+  const pool = groups.length ? groups : items;
+  return pool.reduce((best, it) => (!best || it.stats.totalMessages > best.stats.totalMessages ? it : best), null)?.id ?? null;
+};
 
 // ---------- the same person on different apps ----------
 const norm = (s) => String(s || "").toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]/gu, "");
@@ -1324,7 +1345,7 @@ function analysePeople(bag, mainId, userAliases = {}) {
 // The context chats share part of the reading budget; the main chat keeps the rest.
 function planBudget(total, n) {
   if (!n) return { main: total, each: 0 };
-  const share = Math.min(0.4, 0.15 + 0.1 * n);
+  const share = Math.min(0.5, 0.15 + 0.07 * n);
   return { main: Math.round(total * (1 - share)), each: Math.round((total * share) / n) };
 }
 
@@ -1358,6 +1379,7 @@ function prepareEvidence({ bag, mainId, userAliases = {}, hide = true, budget })
     return {
       label,
       source: c.chat.source,
+      kind: isGroup(c) ? "group" : "private",
       title: summary.title,
       stats: summary,
       transcript: buildTranscript(c.chat, c.stats, { anon, budget: plan.each, idPrefix: label }),
@@ -1366,7 +1388,7 @@ function prepareEvidence({ bag, mainId, userAliases = {}, hide = true, budget })
   return { anon, mainStats, mainTranscript, contexts: ctx };
 }
 
-return { MAX_CONTEXT, NOT_SAME, sourceName, readUploads, parseUploads, addToBag, pickMain, autoAlias, analysePeople, planBudget, prepareEvidence };
+return { MAX_CONTEXT, NOT_SAME, sourceName, readUploads, parseUploads, addToBag, isGroup, pickMain, autoAlias, analysePeople, planBudget, prepareEvidence };
 })();
 
 const __m5_report = (() => {
@@ -1763,21 +1785,25 @@ return { esc, colorFor, renderCase, renderStats, roastText };
 })();
 
 const __m4_bag = (() => {
-// The evidence bag panel shown on the interrogation card.
+// The evidence bag panel, used on the landing page (before the report) and on the interrogation card.
+// A "target" t is any object { bag, mainId, userAliases }: the landing stage or the open case.
 const { esc } = __m5_report;
-const { MAX_CONTEXT, NOT_SAME, analysePeople, sourceName } = __m1_evidence;
+const { MAX_CONTEXT, NOT_SAME, analysePeople, sourceName, isGroup, readUploads, parseUploads, addToBag, pickMain } = __m1_evidence;
 const ACCEPT = ".zip,.txt,.json,application/zip,text/plain,application/json";
 
-function bagHtml({ bag, mainId, userAliases = {} }) {
+// opts.fileId: id of the hidden file input (must be unique on the page). opts.light: for the white landing card.
+function bagHtml(t, { fileId = "bag-file", light = false, removeLast = false } = {}) {
+  const { bag, mainId, userAliases = {} } = t;
   if (!bag.length) return "";
   const multi = bag.length > 1;
   const rows = bag.map((b) => {
     const isMain = b.id === mainId;
-    const meta = `${esc(sourceName(b.chat.source))} · ${b.stats.totalMessages.toLocaleString()} messages · ${b.stats.people.length} people`;
+    const kind = isGroup(b) ? "group" : "private chat";
+    const meta = `${esc(sourceName(b.chat.source))} · ${esc(kind)} · ${b.stats.totalMessages.toLocaleString()} msgs · ${b.stats.people.length} people`;
     return `<div class="bag-row${isMain ? " is-main" : ""}">
-  ${multi ? `<label class="bag-pick"><input type="radio" name="bag-main" value="${esc(b.id)}" ${isMain ? "checked" : ""}><span>${isMain ? "Main chat" : "Context"}</span></label>` : `<span class="bag-tag">Main chat</span>`}
+  ${multi ? `<label class="bag-pick"><input type="radio" name="bag-main-${esc(fileId)}" value="${esc(b.id)}" ${isMain ? "checked" : ""}><span>${isMain ? "Main chat" : "Context"}</span></label>` : `<span class="bag-tag">Main chat</span>`}
   <span class="bag-name"><b>${esc(b.chat.title)}</b><small>${meta}</small></span>
-  ${multi ? `<button class="bag-x" type="button" data-remove="${esc(b.id)}" aria-label="Remove ${esc(b.chat.title)}">✕</button>` : ""}
+  ${multi || removeLast ? `<button class="bag-x" type="button" data-remove="${esc(b.id)}" aria-label="Remove ${esc(b.chat.title)}">✕</button>` : ""}
 </div>`;
   }).join("");
 
@@ -1795,24 +1821,73 @@ function bagHtml({ bag, mainId, userAliases = {} }) {
   }
 
   const room = bag.length < MAX_CONTEXT + 1;
-  return `<div class="ebag">
-  <div class="bag-head"><b>📚 Evidence bag</b><small>${multi ? "Pick the main chat. The others add context." : "Optional: add chats from other apps to give the investigator more context."}</small></div>
+  const hint = multi
+    ? "Pick the main chat. The others add context."
+    : "Optional: drop more chats. A group chat plus private chats with each friend gives the best picture.";
+  return `<div class="ebag${light ? " light" : ""}">
+  <div class="bag-head"><b>📚 Evidence bag <small>(${bag.length} of ${MAX_CONTEXT + 1})</small></b><small>${hint}</small></div>
   ${rows}
-  ${room ? `<label class="btn small yellow bag-add" for="bag-file">➕ Add another chat (optional)</label><input type="file" id="bag-file" accept="${ACCEPT}" multiple hidden>` : `<small class="bag-full">The bag is full: the main chat plus ${MAX_CONTEXT} extra chats.</small>`}
+  ${room ? `<label class="btn small yellow bag-add" for="${esc(fileId)}">➕ Drop more chats (optional)</label><input type="file" id="${esc(fileId)}" accept="${ACCEPT}" multiple hidden>` : `<small class="bag-full">The bag is full: the main chat plus ${MAX_CONTEXT} extra chats.</small>`}
   ${alias}
 </div>`;
 }
 
 // handlers: { onAdd(fileList), onRemove(id), onMain(id), onAlias(name, choice) }
-function bindBag(root, handlers) {
-  const file = root.querySelector("#bag-file");
+function bindBag(root, handlers, fileId = "bag-file") {
+  const file = root.querySelector("#" + fileId);
   file?.addEventListener("change", () => { const files = file.files; if (files?.length) handlers.onAdd(files); file.value = ""; });
   root.querySelectorAll("[data-remove]").forEach((b) => b.addEventListener("click", () => handlers.onRemove(b.dataset.remove)));
-  root.querySelectorAll('input[name="bag-main"]').forEach((r) => r.addEventListener("change", () => handlers.onMain(r.value)));
+  root.querySelectorAll(`input[name="bag-main-${fileId}"]`).forEach((r) => r.addEventListener("change", () => handlers.onMain(r.value)));
   root.querySelectorAll("select[data-alias]").forEach((sel) => sel.addEventListener("change", () => handlers.onAlias(sel.dataset.alias, sel.value || NOT_SAME)));
 }
 
-return { bagHtml, bindBag };
+// ---------- shared actions (work on any target) ----------
+// ui: { begin(), step(n), end(), toast(msg) } so each page can show its own overlay.
+async function addFilesTo(t, fileList, ui, JSZip) {
+  if (!fileList?.length) return 0;
+  ui.begin();
+  try {
+    ui.step(0);
+    const { groups, errors } = await readUploads(fileList, JSZip);
+    ui.step(1);
+    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));
+    const { items, errors: more } = parseUploads(groups);
+    const { bag, notes } = addToBag(t.bag, items);
+    const added = bag.length - t.bag.length;
+    const wasEmpty = t.bag.length === 0;
+    t.bag = bag;
+    if (added && (wasEmpty || !bag.some((b) => b.id === t.mainId))) { t.mainId = pickMain(bag); t.userAliases = {}; }
+    const problems = [...errors, ...more, ...notes];
+    if (added) ui.toast(`Added ${added} chat${added > 1 ? "s" : ""} to the bag.${problems.length ? ` Skipped: ${problems.join(" · ")}` : ""}`, 7000);
+    else ui.toast(problems.join(" · ") || "Nothing new to add.", 7000);
+    return added;
+  } catch (err) {
+    console.error(err);
+    ui.toast("Couldn't read that file. Try exporting it again.", 5000);
+    return 0;
+  } finally {
+    ui.end();
+  }
+}
+
+// Returns true when the main chat changed.
+function removeFrom(t, id) {
+  t.bag = t.bag.filter((b) => b.id !== id);
+  if (t.mainId === id || !t.bag.some((b) => b.id === t.mainId)) {
+    t.mainId = t.bag.length ? pickMain(t.bag) : null;
+    t.userAliases = {};
+    return true;
+  }
+  return false;
+}
+
+function setMainOf(t, id) {
+  if (id === t.mainId || !t.bag.some((b) => b.id === id)) return false;
+  t.mainId = id; t.userAliases = {};
+  return true;
+}
+
+return { bagHtml, bindBag, addFilesTo, removeFrom, setMainOf };
 })();
 
 const __m6_share = (() => {
@@ -2437,6 +2512,7 @@ const CONTEXT_RULES = `CONTEXT CHATS
 Besides the main chat you also get <context_chat> blocks: the same people (or people close to them) talking on other apps or in other groups. Each has its own <context_stats> and a sampled <context_transcript> whose ids carry a letter prefix, like B#12.
 - The main chat is what you investigate. Mugshots, pairs, awards and the fix-it plan are about the people in the main chat. People who only appear in a context chat can be mentioned in pairs, the unsaid or the speciality report when it matters, but do not give them a mugshot.
 - Use the context chats to cross-check: who is warmer, sharper or quieter somewhere else, what gets said in private that never shows up in the main chat, whether a fight or a crush shows on both sides, and whether a person is the same person everywhere. Say plainly when a context chat changes your reading.
+- A context chat marked kind="private" is a one-to-one chat between two people. Use it to see how those two really talk when nobody else is watching, and compare that with how they act in the main chat. Several private chats can be given together (for example the uploader's chat with each friend in the group): look across them for who is different one-on-one than in the group.
 - The same suspect code is the same person on every app.
 - Cite context evidence with its prefixed id (for example "B#12"). Receipts and exhibits must come only from the main chat, with plain ids like "#12".
 - Context transcripts are samples. Never claim something is missing from a context chat unless its stats prove it.`;
@@ -2511,7 +2587,7 @@ const clean = (x, n = 120) => String(x ?? "").replace(/[<>"]/g, "").slice(0, n);
 // contexts: [{ label: "B", source, title, stats, transcript }] from the optional extra chats.
 function buildUserMessage({ stats, transcript, contexts = [] }) {
   const extra = contexts
-    .map((c) => `<context_chat id="${clean(c.label, 3)}" source="${clean(c.source, 20)}" title="${clean(c.title)}">
+    .map((c) => `<context_chat id="${clean(c.label, 3)}" source="${clean(c.source, 20)}" kind="${c.kind === "group" ? "group" : "private"}" title="${clean(c.title)}">
 <context_stats>
 ${JSON.stringify(c.stats ?? {})}
 </context_stats>
@@ -2695,8 +2771,8 @@ const __m0_app = (() => {
 // FBI, OPEN UP! — one-click version. Runs entirely in the page; the AI
 // investigation asks Claude through the viewer's own Claude account
 // (the artifact `sample` capability), so there is no server and no key.
-const { readUploads, parseUploads, addToBag, pickMain, prepareEvidence } = __m1_evidence;
-const { bagHtml, bindBag } = __m4_bag;
+const { pickMain, prepareEvidence } = __m1_evidence;
+const { bagHtml, bindBag, addFilesTo, removeFrom, setMainOf } = __m4_bag;
 const { parseFiles } = __m2_parser;
 const { computeStats, restoreDeep, scrub } = __m3_stats;
 const { renderCase, renderStats, roastText, esc } = __m5_report;
@@ -2810,64 +2886,35 @@ function aiLabel() {
 }
 
 // ---------- file handling ----------
-// Drop one chat, or several exports from different apps at once. The biggest becomes the main chat.
+// Landing page: drop one chat, or several at once, then add more and open the case.
+const stage = { bag: [], mainId: null, userAliases: {} };
+const ui = { begin: () => showOverlay("Seizing evidence…", ["Opening the files", "Reading the chats"]), step: (n) => setStep(n), end: () => hideOverlay(), toast: (m, ms) => toast(m, ms) };
+
 async function handleFiles(fileList) {
   if (!fileList?.length || state.busy) return;
-  try {
-    showOverlay("Seizing evidence…", ["Opening the evidence bag", "Dusting for fingerprints", "Building the rap sheet"]);
-    setStep(0);
-    const { groups, errors } = await readUploads(fileList, window.JSZip);
-    setStep(1); await tick();
-    const { items, errors: more } = parseUploads(groups);
-    const problems = [...errors, ...more];
-    if (!items.length) throw new Error(problems.join(" · ") || "That doesn't look like a chat export. Drop a .zip, .txt or .json.");
-    setStep(2); await sleep(400);
-    const { bag, notes } = addToBag([], items);
-    openReport(bag, false);
-    const skipped = [...problems, ...notes];
-    if (skipped.length) toast(`Skipped: ${skipped.join(" · ")}`, 7000);
-  } catch (err) {
-    toast(err.message || "Something went wrong reading that file.", 6000);
-  } finally {
-    hideOverlay();
-  }
+  await addFilesTo(stage, fileList, ui, window.JSZip);
+  renderStage();
 }
 
-// Adds more chats (other apps) to the bag as optional context.
-async function addMore(fileList) {
-  if (state.busy || !fileList?.length) return;
-  showOverlay("Adding evidence…", ["Opening the files", "Reading the chats"]);
-  try {
-    setStep(0);
-    const { groups, errors } = await readUploads(fileList, window.JSZip);
-    setStep(1); await tick();
-    const { items, errors: more } = parseUploads(groups);
-    const { bag, notes } = addToBag(state.bag, items);
-    const added = bag.length - state.bag.length;
-    state.bag = bag;
-    const problems = [...errors, ...more, ...notes];
-    toast(added ? `Added ${added} chat${added > 1 ? "s" : ""} to the bag.${problems.length ? ` Skipped: ${problems.join(" · ")}` : ""}` : problems.join(" · ") || "Nothing new to add.", 7000);
-    renderInterrogateCard();
-  } catch (err) {
-    console.error(err);
-    toast("Couldn't add that file. Try exporting it again.", 5000);
-  } finally {
-    hideOverlay();
-  }
+function renderStage() {
+  const el = $("#landing-bag");
+  if (!stage.bag.length) { el.innerHTML = ""; return; }
+  el.innerHTML = bagHtml(stage, { fileId: "bag-file-l", light: true, removeLast: true }) + `<button class="btn primary big" type="button" id="stage-go">Open the case file ▶</button>`;
+  bindBag(el, {
+    onAdd: async (f) => { if (state.busy) return; await addFilesTo(stage, f, ui, window.JSZip); renderStage(); },
+    onRemove: (id) => { removeFrom(stage, id); renderStage(); },
+    onMain: (id) => { if (setMainOf(stage, id)) renderStage(); },
+    onAlias: (name, choice) => { stage.userAliases[name] = choice; },
+  }, "bag-file-l");
+  $("#stage-go").addEventListener("click", openStage);
 }
 
-function removeFromBag(id) {
-  if (state.bag.length <= 1) return;
-  state.bag = state.bag.filter((b) => b.id !== id);
-  if (state.mainId === id) { state.mainId = pickMain(state.bag); state.asker = {}; state.userAliases = {}; applyMain(); }
-  renderInterrogateCard();
-}
-
-function setMain(id) {
-  if (id === state.mainId || !state.bag.some((b) => b.id === id)) return;
-  state.mainId = id; state.asker = {}; state.userAliases = {};
-  applyMain();
-  renderInterrogateCard();
+function openStage() {
+  if (!stage.bag.length || state.busy) return;
+  const { bag, mainId, userAliases } = stage;
+  stage.bag = []; stage.mainId = null; stage.userAliases = {};
+  renderStage();
+  openReport(bag, false, { mainId, userAliases });
 }
 
 function loadSample() {
@@ -2893,8 +2940,8 @@ function applyMain() {
   buildJump();
 }
 
-function openReport(bag, isSample) {
-  Object.assign(state, { bag, mainId: pickMain(bag), userAliases: {}, caseFile: null, isSample, asker: {}, ranDepth: null });
+function openReport(bag, isSample, pre = {}) {
+  Object.assign(state, { bag, mainId: pre.mainId || pickMain(bag), userAliases: pre.userAliases || {}, caseFile: null, isSample, asker: {}, ranDepth: null });
   applyMain();
   $("#landing").hidden = true;
   $("#report").hidden = false;
@@ -2935,7 +2982,7 @@ function renderInterrogateCard(errorMsg = "") {
     <h2>🚨 Send in the investigator</h2>
     <p>Your investigator reads the messages and writes their speciality report, plus mugshots, ships &amp; beefs, the unsaid, awards and a fix-it plan.</p>
     <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span><span class="chip m">${DEPTHS[s.depth].emoji} ${DEPTHS[s.depth].label}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
-    ${state.isSample ? "" : bagHtml({ bag: state.bag, mainId: state.mainId, userAliases: state.userAliases })}
+    ${state.isSample ? "" : bagHtml(state)}
     ${state.isSample ? "" : askerHtml(state.stats.people, state.asker)}
     <p class="note">${esc(note)}</p>
     ${errorMsg ? `<p class="note" style="color:#ffb3b9">⚠️ ${esc(errorMsg)}</p>` : ""}
@@ -2948,9 +2995,9 @@ function renderInterrogateCard(errorMsg = "") {
   $("#go").addEventListener("click", () => startInvestigation());
   // Keep what the viewer typed if the card is redrawn (for example after an error).
   bindBag($("#interrogate-wrap"), {
-    onAdd: addMore,
-    onRemove: removeFromBag,
-    onMain: setMain,
+    onAdd: async (f) => { if (state.busy) return; await addFilesTo(state, f, ui, window.JSZip); renderInterrogateCard(); },
+    onRemove: (id) => { if (state.bag.length <= 1) return; if (removeFrom(state, id)) { state.asker = {}; applyMain(); } renderInterrogateCard(); },
+    onMain: (id) => { if (setMainOf(state, id)) { state.asker = {}; applyMain(); renderInterrogateCard(); } },
     onAlias: (name, choice) => { state.userAliases[name] = choice; },
   });
   const keep = () => { state.asker = readAsker(); };

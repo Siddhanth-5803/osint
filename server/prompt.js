@@ -52,6 +52,7 @@ const CONTEXT_RULES = `CONTEXT CHATS
 Besides the main chat you also get <context_chat> blocks: the same people (or people close to them) talking on other apps or in other groups. Each has its own <context_stats> and a sampled <context_transcript> whose ids carry a letter prefix, like B#12.
 - The main chat is what you investigate. Mugshots, pairs, awards and the fix-it plan are about the people in the main chat. People who only appear in a context chat can be mentioned in pairs, the unsaid or the speciality report when it matters, but do not give them a mugshot.
 - Use the context chats to cross-check: who is warmer, sharper or quieter somewhere else, what gets said in private that never shows up in the main chat, whether a fight or a crush shows on both sides, and whether a person is the same person everywhere. Say plainly when a context chat changes your reading.
+- A context chat marked kind="private" is a one-to-one chat between two people. Use it to see how those two really talk when nobody else is watching, and compare that with how they act in the main chat. Several private chats can be given together (for example the uploader's chat with each friend in the group): look across them for who is different one-on-one than in the group.
 - The same suspect code is the same person on every app.
 - Cite context evidence with its prefixed id (for example "B#12"). Receipts and exhibits must come only from the main chat, with plain ids like "#12".
 - Context transcripts are samples. Never claim something is missing from a context chat unless its stats prove it.`;
@@ -126,7 +127,7 @@ const clean = (x, n = 120) => String(x ?? "").replace(/[<>"]/g, "").slice(0, n);
 // contexts: [{ label: "B", source, title, stats, transcript }] from the optional extra chats.
 export function buildUserMessage({ stats, transcript, contexts = [] }) {
   const extra = contexts
-    .map((c) => `<context_chat id="${clean(c.label, 3)}" source="${clean(c.source, 20)}" title="${clean(c.title)}">
+    .map((c) => `<context_chat id="${clean(c.label, 3)}" source="${clean(c.source, 20)}" kind="${c.kind === "group" ? "group" : "private"}" title="${clean(c.title)}">
 <context_stats>
 ${JSON.stringify(c.stats ?? {})}
 </context_stats>

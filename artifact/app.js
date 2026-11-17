@@ -1,8 +1,8 @@
 // FBI, OPEN UP! — one-click version. Runs entirely in the page; the AI
 // investigation asks Claude through the viewer's own Claude account
 // (the artifact `sample` capability), so there is no server and no key.
-import { readUploads, parseUploads, addToBag, pickMain, prepareEvidence } from "../public/js/evidence.js";
-import { bagHtml, bindBag } from "../public/js/bag.js";
+import { pickMain, prepareEvidence } from "../public/js/evidence.js";
+import { bagHtml, bindBag, addFilesTo, removeFrom, setMainOf } from "../public/js/bag.js";
 import { parseFiles } from "../public/js/parser.js";
 import { computeStats, restoreDeep, scrub } from "../public/js/stats.js";
 import { renderCase, renderStats, roastText, esc } from "../public/js/report.js";
@@ -117,64 +117,35 @@ function aiLabel() {
 }
 
 // ---------- file handling ----------
-// Drop one chat, or several exports from different apps at once. The biggest becomes the main chat.
+// Landing page: drop one chat, or several at once, then add more and open the case.
+const stage = { bag: [], mainId: null, userAliases: {} };
+const ui = { begin: () => showOverlay("Seizing evidence…", ["Opening the files", "Reading the chats"]), step: (n) => setStep(n), end: () => hideOverlay(), toast: (m, ms) => toast(m, ms) };
+
 async function handleFiles(fileList) {
   if (!fileList?.length || state.busy) return;
-  try {
-    showOverlay("Seizing evidence…", ["Opening the evidence bag", "Dusting for fingerprints", "Building the rap sheet"]);
-    setStep(0);
-    const { groups, errors } = await readUploads(fileList, window.JSZip);
-    setStep(1); await tick();
-    const { items, errors: more } = parseUploads(groups);
-    const problems = [...errors, ...more];
-    if (!items.length) throw new Error(problems.join(" · ") || "That doesn't look like a chat export. Drop a .zip, .txt or .json.");
-    setStep(2); await sleep(400);
-    const { bag, notes } = addToBag([], items);
-    openReport(bag, false);
-    const skipped = [...problems, ...notes];
-    if (skipped.length) toast(`Skipped: ${skipped.join(" · ")}`, 7000);
-  } catch (err) {
-    toast(err.message || "Something went wrong reading that file.", 6000);
-  } finally {
-    hideOverlay();
-  }
+  await addFilesTo(stage, fileList, ui, window.JSZip);
+  renderStage();
 }
 
-// Adds more chats (other apps) to the bag as optional context.
-async function addMore(fileList) {
-  if (state.busy || !fileList?.length) return;
-  showOverlay("Adding evidence…", ["Opening the files", "Reading the chats"]);
-  try {
-    setStep(0);
-    const { groups, errors } = await readUploads(fileList, window.JSZip);
-    setStep(1); await tick();
-    const { items, errors: more } = parseUploads(groups);
-    const { bag, notes } = addToBag(state.bag, items);
-    const added = bag.length - state.bag.length;
-    state.bag = bag;
-    const problems = [...errors, ...more, ...notes];
-    toast(added ? `Added ${added} chat${added > 1 ? "s" : ""} to the bag.${problems.length ? ` Skipped: ${problems.join(" · ")}` : ""}` : problems.join(" · ") || "Nothing new to add.", 7000);
-    renderInterrogateCard();
-  } catch (err) {
-    console.error(err);
-    toast("Couldn't add that file. Try exporting it again.", 5000);
-  } finally {
-    hideOverlay();
-  }
+function renderStage() {
+  const el = $("#landing-bag");
+  if (!stage.bag.length) { el.innerHTML = ""; return; }
+  el.innerHTML = bagHtml(stage, { fileId: "bag-file-l", light: true, removeLast: true }) + `<button class="btn primary big" type="button" id="stage-go">Open the case file ▶</button>`;
+  bindBag(el, {
+    onAdd: async (f) => { if (state.busy) return; await addFilesTo(stage, f, ui, window.JSZip); renderStage(); },
+    onRemove: (id) => { removeFrom(stage, id); renderStage(); },
+    onMain: (id) => { if (setMainOf(stage, id)) renderStage(); },
+    onAlias: (name, choice) => { stage.userAliases[name] = choice; },
+  }, "bag-file-l");
+  $("#stage-go").addEventListener("click", openStage);
 }
 
-function removeFromBag(id) {
-  if (state.bag.length <= 1) return;
-  state.bag = state.bag.filter((b) => b.id !== id);
-  if (state.mainId === id) { state.mainId = pickMain(state.bag); state.asker = {}; state.userAliases = {}; applyMain(); }
-  renderInterrogateCard();
-}
-
-function setMain(id) {
-  if (id === state.mainId || !state.bag.some((b) => b.id === id)) return;
-  state.mainId = id; state.asker = {}; state.userAliases = {};
-  applyMain();
-  renderInterrogateCard();
+function openStage() {
+  if (!stage.bag.length || state.busy) return;
+  const { bag, mainId, userAliases } = stage;
+  stage.bag = []; stage.mainId = null; stage.userAliases = {};
+  renderStage();
+  openReport(bag, false, { mainId, userAliases });
 }
 
 function loadSample() {
@@ -200,8 +171,8 @@ function applyMain() {
   buildJump();
 }
 
-function openReport(bag, isSample) {
-  Object.assign(state, { bag, mainId: pickMain(bag), userAliases: {}, caseFile: null, isSample, asker: {}, ranDepth: null });
+function openReport(bag, isSample, pre = {}) {
+  Object.assign(state, { bag, mainId: pre.mainId || pickMain(bag), userAliases: pre.userAliases || {}, caseFile: null, isSample, asker: {}, ranDepth: null });
   applyMain();
   $("#landing").hidden = true;
   $("#report").hidden = false;
@@ -242,7 +213,7 @@ function renderInterrogateCard(errorMsg = "") {
     <h2>🚨 Send in the investigator</h2>
     <p>Your investigator reads the messages and writes their speciality report, plus mugshots, ships &amp; beefs, the unsaid, awards and a fix-it plan.</p>
     <div class="meta"><span class="chip y">${emo} ${esc(name)}</span><span class="chip p">${{ wholesome: "😇 Wholesome", spicy: "🌶️ Spicy", nuclear: "☢️ Nuclear" }[s.spice]}</span><span class="chip m">${DEPTHS[s.depth].emoji} ${DEPTHS[s.depth].label}</span>${s.anon ? '<span class="chip l">🙈 names hidden</span>' : ""}</div>
-    ${state.isSample ? "" : bagHtml({ bag: state.bag, mainId: state.mainId, userAliases: state.userAliases })}
+    ${state.isSample ? "" : bagHtml(state)}
     ${state.isSample ? "" : askerHtml(state.stats.people, state.asker)}
     <p class="note">${esc(note)}</p>
     ${errorMsg ? `<p class="note" style="color:#ffb3b9">⚠️ ${esc(errorMsg)}</p>` : ""}
@@ -255,9 +226,9 @@ function renderInterrogateCard(errorMsg = "") {
   $("#go").addEventListener("click", () => startInvestigation());
   // Keep what the viewer typed if the card is redrawn (for example after an error).
   bindBag($("#interrogate-wrap"), {
-    onAdd: addMore,
-    onRemove: removeFromBag,
-    onMain: setMain,
+    onAdd: async (f) => { if (state.busy) return; await addFilesTo(state, f, ui, window.JSZip); renderInterrogateCard(); },
+    onRemove: (id) => { if (state.bag.length <= 1) return; if (removeFrom(state, id)) { state.asker = {}; applyMain(); } renderInterrogateCard(); },
+    onMain: (id) => { if (setMainOf(state, id)) { state.asker = {}; applyMain(); renderInterrogateCard(); } },
     onAlias: (name, choice) => { state.userAliases[name] = choice; },
   });
   const keep = () => { state.asker = readAsker(); };
