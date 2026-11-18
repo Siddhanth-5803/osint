@@ -2,3 +2,6 @@ node_modules/
 .env
 *.log
 .DS_Store
+
+# Private incident log: real chat excerpts, never commit
+.claude/incidents/

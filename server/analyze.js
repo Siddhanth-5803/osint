@@ -126,6 +126,12 @@ function mockCase(stats) {
         intro: "This section changes with the investigator you pick.",
         items: [{ title: `${a} vs ${b}`, body: "A mock fight about who booked nothing.", verdict: "Started by nobody. Won by the memes.", evidence: ["stat:pairs"] }],
       },
+      incidents: [{
+        name: "The Great Mock Skirmish", kind: "fight", chat: stats?.title || "Mock chat", date: stats?.range?.from || "",
+        summary: "A mock incident to show the layout.", how_it_started: "It began with a mock message.", start_id: "#3", start_translation: "",
+        hottest_moment: "It peaked a few messages later.", hot_id: "#5", hot_translation: "", what_ended_it: "Someone sent a sticker.", end_id: "#7", end_translation: "",
+        people: [a, b], heat: 55, outcome: "fizzled_out",
+      }],
       final_verdict: "Guilty of being a perfectly normal, slightly unhinged group chat.",
       share_lines: ["We got raided by the FBI.", `${a} is the group mom. Confirmed.`, "Chaos level: 72%"],
     },

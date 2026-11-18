@@ -86,3 +86,42 @@ test("Android system lines are not people", () => {
   ].join("\n"));
   assert.deepEqual(r.messages.map((m) => m.author), ["Meera", null, null, "Zoya"]);
 });
+
+
+test("incident reports: beats, real messages, translations and the whole conversation", () => {
+  const cf = coerceCase(SAMPLE_CASE);
+  const html = renderCase(cf, stats, { chat });
+  assert.match(html, /id="incidents"/);
+  assert.match(html, /The Great Date Incident/);
+  assert.match(html, /How it started/);
+  assert.match(html, /The hottest moment/);
+  assert.match(html, /What ended it/);
+  assert.match(html, /so we change dates for zoya instantly/, "the real message is looked up by id");
+  assert.match(html, /Read the whole conversation <small>\(6 messages\)/, "all six messages between #40 and #45");
+  assert.match(html, /class="cv-line hot"/);
+});
+
+test("incidents survive bad ids, odd shapes and long conversations", () => {
+  const bad = coerceCase({ case_title: "x", incidents: [
+    { name: "No ids", kind: "Big Fight", heat: "90%", outcome: "who knows", people: "Meera", start_id: "nonsense", end_id: "#9999" },
+    "just a string",
+    { name: "Backwards", start_id: "#50", end_id: "#10", hot_id: "#20" },
+    { name: "Long", start_id: "#3", hot_id: "#50", end_id: "#94" },
+  ] });
+  assert.equal(bad.incidents[0].kind, "fight");
+  assert.equal(bad.incidents[0].heat, 90);
+  const html = renderCase(bad, stats, { chat });
+  assert.match(html, /No ids/);
+  assert.doesNotMatch(html.split("Backwards")[1].split("</article>")[0], /Read the whole conversation/, "end before start gives no conversation");
+  const longPart = html.split("Long")[html.split("Long").length - 1].split("</article>")[0];
+  assert.match(longPart, /Read the whole conversation <small>\(\d+ messages\)/);
+  assert.match(longPart, /more messages/, "a long incident is trimmed around the peak");
+  assert.ok(renderCase(bad, stats).includes("No ids"), "renders with no chat at all");
+});
+
+test("an incident can cite a context chat by its prefixed ids", () => {
+  const cf = coerceCase({ case_title: "x", incidents: [{ name: "Elsewhere", start_id: "B#2", hot_id: "B#3", end_id: "B#4", kind: "drama" }] });
+  const other = parseFiles([{ name: "WhatsApp Chat with Goa.txt", text: SAMPLE_CHAT_TEXT }]);
+  const html = renderCase(cf, stats, { chats: { "": chat, B: other } });
+  assert.match(html, /B#\d+ ·/);
+});

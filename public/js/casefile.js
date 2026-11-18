@@ -102,7 +102,7 @@ export function coerceCase(raw) {
   // Drop list entries that came back completely empty.
   const hasText = (o) => Object.values(o).some((v) => (typeof v === "string" ? v.trim() : Array.isArray(v) ? v.length : false));
   cf.suspects = cf.suspects.filter((s) => s.name.trim());
-  for (const k of ["pairs", "unsaid", "awards", "exhibits", "timeline", "fix_it"]) cf[k] = cf[k].filter(hasText);
+  for (const k of ["pairs", "unsaid", "awards", "exhibits", "timeline", "fix_it", "incidents"]) cf[k] = cf[k].filter(hasText);
   cf.focus_report.items = cf.focus_report.items.filter(hasText);
   cf.share_lines = cf.share_lines.filter((x) => x.trim());
   if (!cf.case_title.trim() && !cf.suspects.length && !cf.focus_report.items.length) throw { code: "invalid_json" };

@@ -39,18 +39,84 @@ function when(ts) {
   }
 }
 
+// Looks a message up by id. Plain ids ("#12") are the main chat, prefixed ("B#12") a context chat.
+function findMsg(chats, id) {
+  const m0 = String(id ?? "").trim().match(/^([A-Z]?)#?(\d{1,7})$/);
+  if (!m0 || !chats) return null;
+  const chat = chats[m0[1]];
+  const n = parseInt(m0[2], 10);
+  const m = chat?.messages?.[n - 1];
+  return m && m.i === n && m.author ? { m, chat, prefix: m0[1] } : null;
+}
+
+const KIND = { fight: ["💥", "Fight"], leak: ["🕵️", "Leak"], drama: ["🎭", "Drama"], romance: ["💘", "Romance"], plan: ["🗺️", "Plan"], prank: ["🤡", "Prank"], other: ["📌", "Incident"] };
+const OUTCOME = { resolved: ["✅", "Resolved"], unresolved: ["❓", "Unresolved"], escalated: ["📈", "Escalated"], fizzled_out: ["💨", "Fizzled out"] };
+
+// One beat of an incident: what the AI says, plus the real message it points at.
+function beatHtml(icon, label, text, id, tr, chats) {
+  const hit = findMsg(chats, id);
+  let quote = "";
+  if (hit) {
+    const t = hit.m.type === "text" && tr && !sameText(tr, hit.m.text) ? `<p class="r-tr"><span class="r-en">English</span> ${esc(tr)}</p>` : "";
+    quote = `<div class="i-quote"><span class="r-meta">${esc(hit.prefix)}#${hit.m.i} · ${esc(when(hit.m.ts))} · ${esc(hit.m.author)}</span><p class="r-text">${esc(msgBody(hit.m))}</p>${t}</div>`;
+  }
+  return `<div class="beat"><span class="beat-tag">${icon} ${label}</span><p>${esc(text)}</p>${quote}</div>`;
+}
+
+// The whole conversation between the start and the end of the incident (long ones keep the start, the peak and the end).
+function conversationHtml(inc, chats) {
+  const a = findMsg(chats, inc.start_id), b = findMsg(chats, inc.end_id), h = findMsg(chats, inc.hot_id);
+  if (!a || !b || a.chat !== b.chat || b.m.i < a.m.i) return "";
+  const rows = a.chat.messages.slice(a.m.i - 1, b.m.i).filter((m) => m.author && m.type !== "system" && m.type !== "call");
+  if (!rows.length) return "";
+  const MAX = 80;
+  let keep = rows.map(() => true);
+  if (rows.length > MAX) {
+    const hi = h && h.chat === a.chat ? rows.findIndex((m) => m.i === h.m.i) : Math.floor(rows.length / 2);
+    keep = rows.map((_, i) => i < 25 || i >= rows.length - 25 || Math.abs(i - Math.max(hi, 0)) <= 15);
+  }
+  let html = "", gap = 0;
+  rows.forEach((m, i) => {
+    if (!keep[i]) { gap++; return; }
+    if (gap) { html += `<div class="cv-gap">… ${gap} more messages …</div>`; gap = 0; }
+    const hot = h && h.chat === a.chat && h.m.i === m.i;
+    html += `<div class="cv-line${hot ? " hot" : ""}"><span class="cv-meta">${esc(a.prefix)}#${m.i} · ${esc(when(m.ts))} · ${esc(m.author)}</span> ${esc(msgBody(m))}</div>`;
+  });
+  if (gap) html += `<div class="cv-gap">… ${gap} more messages …</div>`;
+  return `<details class="convo"><summary>📜 Read the whole conversation <small>(${rows.length} messages)</small></summary><div class="cv-box">${html}</div></details>`;
+}
+
+function incidentsHtml(list, chats) {
+  if (!Array.isArray(list) || !list.length) return "";
+  const cards = list.map((inc, i) => {
+    const [kEmo, kLabel] = KIND[inc.kind] || KIND.other;
+    const [oEmo, oLabel] = OUTCOME[inc.outcome] || OUTCOME.unresolved;
+    const people = [].concat(inc.people || []).filter(Boolean);
+    return `<article class="incident">
+  <header class="inc-head">
+    <span class="inc-no">CASE ${String(i + 1).padStart(2, "0")}</span>
+    <h3>${esc(inc.name)}</h3>
+    <div class="inc-chips"><span class="chip y">${kEmo} ${kLabel}</span><span class="chip p">${oEmo} ${oLabel}</span>${inc.date ? `<span class="chip">${esc(inc.date)}</span>` : ""}${inc.chat ? `<span class="chip l">in ${esc(inc.chat)}</span>` : ""}</div>
+    <div class="inc-heat"><span>🔥 Heat ${clamp(inc.heat)}</span><div class="meter"><i style="width:${clamp(inc.heat)}%"></i></div></div>
+    ${people.length ? `<p class="inc-people">Involved: ${people.map(esc).join(", ")}</p>` : ""}
+  </header>
+  <p class="inc-sum">${esc(inc.summary)}</p>
+  <div class="beats">
+    ${beatHtml("🟢", "How it started", inc.how_it_started, inc.start_id, inc.start_translation, chats)}
+    ${beatHtml("🔥", "The hottest moment", inc.hottest_moment, inc.hot_id, inc.hot_translation, chats)}
+    ${beatHtml("🏁", "What ended it", inc.what_ended_it, inc.end_id, inc.end_translation, chats)}
+  </div>
+  ${conversationHtml(inc, chats)}
+</article>`;
+  }).join("");
+  return section("incidents", "Incident reports", "The big dramas, start to finish", "Each one with how it started, the hottest moment, what ended it, and the real messages.", `<div class="incidents">${cards}</div>`);
+}
+
 // Receipts: the person's real messages (looked up in the chats by id) and the replies they got.
 // chats: { "": mainChat, B: contextChat, ... }. Plain ids ("#12") are the main chat, prefixed ones ("B#12") a context chat.
 function receiptsHtml(list, chats) {
   if (!chats || !Array.isArray(list) || !list.length) return "";
-  const find = (id) => {
-    const m0 = String(id ?? "").trim().match(/^([A-Z]?)#?(\d{1,7})$/);
-    if (!m0) return null;
-    const chat = chats[m0[1]];
-    const n = parseInt(m0[2], 10);
-    const m = chat?.messages?.[n - 1];
-    return m && m.i === n && m.author ? { m, chat, prefix: m0[1] } : null;
-  };
+  const find = (id) => findMsg(chats, id);
   const nextReply = (m, chat) => {
     const msgs = chat.messages;
     for (let k = m.i; k < Math.min(msgs.length, m.i + 40); k++) {
@@ -169,6 +235,8 @@ export function renderCase(cf, stats, opts = {}) {
     return section("focus", "Speciality report", esc(fr.title || "The investigator's report"), esc(fr.intro || ""), `<div class="files">${files}</div>`);
   }
   }));
+
+  parts.push(safe("incidents", () => incidentsHtml(cf.incidents, chats)));
 
   parts.push(safe("mugshots", () => {
   const mugs = (cf.suspects || []).map((s, i) => safe(`mugshot ${i + 1}`, () => {

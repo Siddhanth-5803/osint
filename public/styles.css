@@ -469,3 +469,24 @@ td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 .read-line b { color: var(--navy); }
 .reading-plan { font-size: .9rem; color: #c9d4f5; margin-top: 8px; }
 .reading-plan b { color: var(--tape); }
+
+/* incident reports */
+.incidents { display: grid; gap: 22px; }
+.incident { background: var(--cloud); border: var(--line); border-radius: var(--r); box-shadow: var(--shadow); padding: clamp(14px, 3vw, 24px); display: grid; gap: 14px; min-width: 0; }
+.inc-head { display: grid; gap: 8px; }
+.inc-no { font-family: var(--f-mono); font-size: .75rem; font-weight: 700; color: var(--red); letter-spacing: .1em; }
+.inc-head h3 { font-size: clamp(1.4rem, 3.5vw, 2rem); overflow-wrap: anywhere; }
+.inc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.inc-heat { display: grid; gap: 4px; font-family: var(--f-mono); font-size: .8rem; font-weight: 700; max-width: 360px; }
+.inc-people { font-size: .9rem; color: var(--navy-soft); }
+.inc-sum { font-size: 1.05rem; }
+.beats { display: grid; gap: 12px; border-left: 4px solid var(--navy); padding-left: 14px; }
+.beat { display: grid; gap: 6px; min-width: 0; }
+.beat-tag { justify-self: start; font-family: var(--f-mono); font-size: .75rem; font-weight: 700; background: var(--tape); border: 2px solid var(--navy); border-radius: 8px; padding: 1px 8px; }
+.i-quote { background: var(--sky-2); border: 2px solid var(--navy); border-radius: 12px; padding: 8px 12px; }
+.convo { background: var(--sky-2); }
+.cv-box { display: grid; gap: 4px; max-height: 420px; overflow-y: auto; padding-bottom: 12px; }
+.cv-line { font-size: .92rem; overflow-wrap: anywhere; padding: 3px 6px; border-radius: 6px; }
+.cv-line.hot { background: #ffe1e4; border: 2px solid var(--red); }
+.cv-meta { font-family: var(--f-mono); font-size: .7rem; color: var(--navy-soft); margin-right: 4px; }
+.cv-gap { text-align: center; font-family: var(--f-mono); font-size: .75rem; color: var(--navy-soft); }

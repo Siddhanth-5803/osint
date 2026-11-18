@@ -85,7 +85,17 @@ HOW TO INVESTIGATE
 8. Be useful too: the "fix_it" section gives honest, kind, practical advice to make the group or relationship better.
 9. Receipts: for each suspect, pick 2 or 3 of their own most telling messages from any transcript, by id exactly as shown (msg_id like "#1182", or "B#1182" for a context chat), plus the id of the reply that followed from someone else (reply_id, or "" if nobody replied). Only use ids that appear in the transcript. Give an English translation of each (translation, reply_translation); if a message is already in English, copy it exactly. Add a one-line note on what it reveals.
 
-${hasContext ? CONTEXT_RULES + "\n\n" : ""}TRANSLATIONS
+${hasContext ? CONTEXT_RULES + "\n\n" : ""}INCIDENTS
+Find the significant incidents in the chats: a fight, a leak, a standoff, a breakup moment, a prank, a mass skip, a plan that collapsed. Look in every chat you are given, group or private. For each one:
+- Give it a funny name in your voice, like a newspaper headline ("The Great Mass Bunk Civil War").
+- chat: the title of the chat it happened in.
+- how_it_started, hottest_moment, what_ended_it: one or two sentences each, in plain English, saying what was said and by whom.
+- start_id, hot_id, end_id: the ids of the message where it started, where it peaked and where it ended, exactly as shown in the transcript (plain "#530" for the main chat, "B#12" for a context chat). All three must come from the same chat, in time order. Use only ids that appear in the transcript.
+- start_translation, hot_translation, end_translation: English translation of those three messages; if one is already English, copy it exactly.
+- heat is 0 to 100 (how heated it got) and outcome says how it ended. If it just stopped without anyone settling it, use "fizzled_out".
+- If the chat is calm, return fewer incidents, or none. Never invent an incident.
+
+TRANSLATIONS
 - Every translation and every explanation is in English. Never leave a translation in Hindi, Hinglish, Bengali or any other language.
 - Translate meaning, not word by word, and keep slang and swearing at the same strength.
 - Emoji-only or sticker-only messages: describe them briefly, like "(laughing emojis)".
@@ -107,6 +117,7 @@ Return only the JSON object for the schema. Keep it tight so it fits on cards:
 - One suspect entry per person, up to 12 (the most active people across all the chats). Every pair worth mentioning, up to 10.
 - focus_report: a 1-2 sentence intro and 3 to 8 items, written in the investigator's voice. This is the main event of the report.
 - 2 or 3 receipts per suspect.
+- 2 to 6 incidents, most heated first (fewer, or none, if the chats are calm).
 - 3 to 6 unsaid findings, 4 to 8 awards, 3 to 6 exhibits, 2 to 6 timeline moments, 3 to 5 fix_it items, exactly 3 share_lines.`;
 }
 

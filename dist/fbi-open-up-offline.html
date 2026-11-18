@@ -482,6 +482,27 @@ td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 .reading-plan { font-size: .9rem; color: #c9d4f5; margin-top: 8px; }
 .reading-plan b { color: var(--tape); }
 
+/* incident reports */
+.incidents { display: grid; gap: 22px; }
+.incident { background: var(--cloud); border: var(--line); border-radius: var(--r); box-shadow: var(--shadow); padding: clamp(14px, 3vw, 24px); display: grid; gap: 14px; min-width: 0; }
+.inc-head { display: grid; gap: 8px; }
+.inc-no { font-family: var(--f-mono); font-size: .75rem; font-weight: 700; color: var(--red); letter-spacing: .1em; }
+.inc-head h3 { font-size: clamp(1.4rem, 3.5vw, 2rem); overflow-wrap: anywhere; }
+.inc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.inc-heat { display: grid; gap: 4px; font-family: var(--f-mono); font-size: .8rem; font-weight: 700; max-width: 360px; }
+.inc-people { font-size: .9rem; color: var(--navy-soft); }
+.inc-sum { font-size: 1.05rem; }
+.beats { display: grid; gap: 12px; border-left: 4px solid var(--navy); padding-left: 14px; }
+.beat { display: grid; gap: 6px; min-width: 0; }
+.beat-tag { justify-self: start; font-family: var(--f-mono); font-size: .75rem; font-weight: 700; background: var(--tape); border: 2px solid var(--navy); border-radius: 8px; padding: 1px 8px; }
+.i-quote { background: var(--sky-2); border: 2px solid var(--navy); border-radius: 12px; padding: 8px 12px; }
+.convo { background: var(--sky-2); }
+.cv-box { display: grid; gap: 4px; max-height: 420px; overflow-y: auto; padding-bottom: 12px; }
+.cv-line { font-size: .92rem; overflow-wrap: anywhere; padding: 3px 6px; border-radius: 6px; }
+.cv-line.hot { background: #ffe1e4; border: 2px solid var(--red); }
+.cv-meta { font-family: var(--f-mono); font-size: .7rem; color: var(--navy-soft); margin-right: 4px; }
+.cv-gap { text-align: center; font-family: var(--f-mono); font-size: .75rem; color: var(--navy-soft); }
+
 /* one-click version: the platform already pads the page for phone notches */
 body { padding-top: 0; padding-bottom: 0; }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 30; background: var(--sky); }
@@ -1502,18 +1523,84 @@ function when(ts) {
   }
 }
 
+// Looks a message up by id. Plain ids ("#12") are the main chat, prefixed ("B#12") a context chat.
+function findMsg(chats, id) {
+  const m0 = String(id ?? "").trim().match(/^([A-Z]?)#?(\d{1,7})$/);
+  if (!m0 || !chats) return null;
+  const chat = chats[m0[1]];
+  const n = parseInt(m0[2], 10);
+  const m = chat?.messages?.[n - 1];
+  return m && m.i === n && m.author ? { m, chat, prefix: m0[1] } : null;
+}
+
+const KIND = { fight: ["💥", "Fight"], leak: ["🕵️", "Leak"], drama: ["🎭", "Drama"], romance: ["💘", "Romance"], plan: ["🗺️", "Plan"], prank: ["🤡", "Prank"], other: ["📌", "Incident"] };
+const OUTCOME = { resolved: ["✅", "Resolved"], unresolved: ["❓", "Unresolved"], escalated: ["📈", "Escalated"], fizzled_out: ["💨", "Fizzled out"] };
+
+// One beat of an incident: what the AI says, plus the real message it points at.
+function beatHtml(icon, label, text, id, tr, chats) {
+  const hit = findMsg(chats, id);
+  let quote = "";
+  if (hit) {
+    const t = hit.m.type === "text" && tr && !sameText(tr, hit.m.text) ? `<p class="r-tr"><span class="r-en">English</span> ${esc(tr)}</p>` : "";
+    quote = `<div class="i-quote"><span class="r-meta">${esc(hit.prefix)}#${hit.m.i} · ${esc(when(hit.m.ts))} · ${esc(hit.m.author)}</span><p class="r-text">${esc(msgBody(hit.m))}</p>${t}</div>`;
+  }
+  return `<div class="beat"><span class="beat-tag">${icon} ${label}</span><p>${esc(text)}</p>${quote}</div>`;
+}
+
+// The whole conversation between the start and the end of the incident (long ones keep the start, the peak and the end).
+function conversationHtml(inc, chats) {
+  const a = findMsg(chats, inc.start_id), b = findMsg(chats, inc.end_id), h = findMsg(chats, inc.hot_id);
+  if (!a || !b || a.chat !== b.chat || b.m.i < a.m.i) return "";
+  const rows = a.chat.messages.slice(a.m.i - 1, b.m.i).filter((m) => m.author && m.type !== "system" && m.type !== "call");
+  if (!rows.length) return "";
+  const MAX = 80;
+  let keep = rows.map(() => true);
+  if (rows.length > MAX) {
+    const hi = h && h.chat === a.chat ? rows.findIndex((m) => m.i === h.m.i) : Math.floor(rows.length / 2);
+    keep = rows.map((_, i) => i < 25 || i >= rows.length - 25 || Math.abs(i - Math.max(hi, 0)) <= 15);
+  }
+  let html = "", gap = 0;
+  rows.forEach((m, i) => {
+    if (!keep[i]) { gap++; return; }
+    if (gap) { html += `<div class="cv-gap">… ${gap} more messages …</div>`; gap = 0; }
+    const hot = h && h.chat === a.chat && h.m.i === m.i;
+    html += `<div class="cv-line${hot ? " hot" : ""}"><span class="cv-meta">${esc(a.prefix)}#${m.i} · ${esc(when(m.ts))} · ${esc(m.author)}</span> ${esc(msgBody(m))}</div>`;
+  });
+  if (gap) html += `<div class="cv-gap">… ${gap} more messages …</div>`;
+  return `<details class="convo"><summary>📜 Read the whole conversation <small>(${rows.length} messages)</small></summary><div class="cv-box">${html}</div></details>`;
+}
+
+function incidentsHtml(list, chats) {
+  if (!Array.isArray(list) || !list.length) return "";
+  const cards = list.map((inc, i) => {
+    const [kEmo, kLabel] = KIND[inc.kind] || KIND.other;
+    const [oEmo, oLabel] = OUTCOME[inc.outcome] || OUTCOME.unresolved;
+    const people = [].concat(inc.people || []).filter(Boolean);
+    return `<article class="incident">
+  <header class="inc-head">
+    <span class="inc-no">CASE ${String(i + 1).padStart(2, "0")}</span>
+    <h3>${esc(inc.name)}</h3>
+    <div class="inc-chips"><span class="chip y">${kEmo} ${kLabel}</span><span class="chip p">${oEmo} ${oLabel}</span>${inc.date ? `<span class="chip">${esc(inc.date)}</span>` : ""}${inc.chat ? `<span class="chip l">in ${esc(inc.chat)}</span>` : ""}</div>
+    <div class="inc-heat"><span>🔥 Heat ${clamp(inc.heat)}</span><div class="meter"><i style="width:${clamp(inc.heat)}%"></i></div></div>
+    ${people.length ? `<p class="inc-people">Involved: ${people.map(esc).join(", ")}</p>` : ""}
+  </header>
+  <p class="inc-sum">${esc(inc.summary)}</p>
+  <div class="beats">
+    ${beatHtml("🟢", "How it started", inc.how_it_started, inc.start_id, inc.start_translation, chats)}
+    ${beatHtml("🔥", "The hottest moment", inc.hottest_moment, inc.hot_id, inc.hot_translation, chats)}
+    ${beatHtml("🏁", "What ended it", inc.what_ended_it, inc.end_id, inc.end_translation, chats)}
+  </div>
+  ${conversationHtml(inc, chats)}
+</article>`;
+  }).join("");
+  return section("incidents", "Incident reports", "The big dramas, start to finish", "Each one with how it started, the hottest moment, what ended it, and the real messages.", `<div class="incidents">${cards}</div>`);
+}
+
 // Receipts: the person's real messages (looked up in the chats by id) and the replies they got.
 // chats: { "": mainChat, B: contextChat, ... }. Plain ids ("#12") are the main chat, prefixed ones ("B#12") a context chat.
 function receiptsHtml(list, chats) {
   if (!chats || !Array.isArray(list) || !list.length) return "";
-  const find = (id) => {
-    const m0 = String(id ?? "").trim().match(/^([A-Z]?)#?(\d{1,7})$/);
-    if (!m0) return null;
-    const chat = chats[m0[1]];
-    const n = parseInt(m0[2], 10);
-    const m = chat?.messages?.[n - 1];
-    return m && m.i === n && m.author ? { m, chat, prefix: m0[1] } : null;
-  };
+  const find = (id) => findMsg(chats, id);
   const nextReply = (m, chat) => {
     const msgs = chat.messages;
     for (let k = m.i; k < Math.min(msgs.length, m.i + 40); k++) {
@@ -1632,6 +1719,8 @@ function renderCase(cf, stats, opts = {}) {
     return section("focus", "Speciality report", esc(fr.title || "The investigator's report"), esc(fr.intro || ""), `<div class="files">${files}</div>`);
   }
   }));
+
+  parts.push(safe("incidents", () => incidentsHtml(cf.incidents, chats)));
 
   parts.push(safe("mugshots", () => {
   const mugs = (cf.suspects || []).map((s, i) => safe(`mugshot ${i + 1}`, () => {
@@ -2351,6 +2440,30 @@ const SAMPLE_CASE = {
     { problem: "Aarav's crush is affecting group decisions.", fix: "Talk to Zoya directly, one-on-one. The group chat is not a confession booth.", for_whom: "Aarav" },
     { problem: "Kabir deletes what he really wants to say.", fix: "Send it to Meera, or to the group. People here care more than he thinks.", for_whom: "Kabir" },
   ],
+  incidents: [
+    {
+      name: "The Great Date Incident", kind: "fight", chat: "Goa Trip 2026", date: "2026-02-05",
+      summary: "One date clash from Zoya moved a whole five-person trip in a minute. Meera had been waiting three days for anyone to fill her sheet, and finally said so.",
+      how_it_started: "Zoya mentioned she could not do 14 to 16 March.",
+      start_id: "#40", start_translation: "can't do march 14-16 btw",
+      hottest_moment: "Meera pointed out the trip dates changed instantly for Zoya, while her sheet sat empty for days.",
+      hot_id: "#42", hot_translation: "wow ok so we change dates for zoya instantly but my sheet sat empty for 3 days",
+      what_ended_it: "Kabir ended it with a polite 'very logical' and a passive-aggressive smiley. Nobody apologised.",
+      end_id: "#45", end_translation: "very logical 🙂",
+      people: ["Meera", "Aarav", "Zoya", "Kabir"], heat: 64, outcome: "fizzled_out",
+    },
+    {
+      name: "The April Postponement Meltdown", kind: "plan", chat: "Goa Trip 2026", date: "2026-02-10",
+      summary: "After weeks of yes without booking, Zoya suggested April and Aarav instantly agreed. Meera had had enough.",
+      how_it_started: "Meera asked, with a smiley, whether the trip was happening at all.",
+      start_id: "#82", start_translation: "are we doing this trip or not 🙂",
+      hottest_moment: "Meera announced she was about to scream.",
+      hot_id: "#87", hot_translation: "i'm going to scream",
+      what_ended_it: "Meera gave up on March, moved everything to April and ordered a new sheet to be filled.",
+      end_id: "#90", end_translation: "fine. april. NEW sheet. fill it.",
+      people: ["Meera", "Zoya", "Aarav", "Rohan"], heat: 78, outcome: "unresolved",
+    },
+  ],
   focus_report: {
     title: "Sherlock's Fight Files",
     intro: "Four conflicts, one root cause: nobody says what they actually mean. I have reconstructed each one from the evidence.",
@@ -2540,6 +2653,28 @@ const CASE_SCHEMA = obj({
   exhibits: { type: "array", items: obj({ msg_id: str, speaker: str, quote: str, why: str }) },
   timeline: { type: "array", items: obj({ date: str, title: str, what_happened: str }) },
   fix_it: { type: "array", items: obj({ problem: str, fix: str, for_whom: str }) },
+  incidents: {
+    type: "array",
+    items: obj({
+      name: str,
+      kind: { type: "string", enum: ["fight", "leak", "drama", "romance", "plan", "prank", "other"] },
+      chat: str,
+      date: str,
+      summary: str,
+      how_it_started: str,
+      start_id: str,
+      start_translation: str,
+      hottest_moment: str,
+      hot_id: str,
+      hot_translation: str,
+      what_ended_it: str,
+      end_id: str,
+      end_translation: str,
+      people: strArr,
+      heat: int,
+      outcome: { type: "string", enum: ["resolved", "unresolved", "escalated", "fizzled_out"] },
+    }),
+  },
   focus_report: obj({
     title: str,
     intro: str,
@@ -2639,7 +2774,17 @@ HOW TO INVESTIGATE
 8. Be useful too: the "fix_it" section gives honest, kind, practical advice to make the group or relationship better.
 9. Receipts: for each suspect, pick 2 or 3 of their own most telling messages from any transcript, by id exactly as shown (msg_id like "#1182", or "B#1182" for a context chat), plus the id of the reply that followed from someone else (reply_id, or "" if nobody replied). Only use ids that appear in the transcript. Give an English translation of each (translation, reply_translation); if a message is already in English, copy it exactly. Add a one-line note on what it reveals.
 
-${hasContext ? CONTEXT_RULES + "\n\n" : ""}TRANSLATIONS
+${hasContext ? CONTEXT_RULES + "\n\n" : ""}INCIDENTS
+Find the significant incidents in the chats: a fight, a leak, a standoff, a breakup moment, a prank, a mass skip, a plan that collapsed. Look in every chat you are given, group or private. For each one:
+- Give it a funny name in your voice, like a newspaper headline ("The Great Mass Bunk Civil War").
+- chat: the title of the chat it happened in.
+- how_it_started, hottest_moment, what_ended_it: one or two sentences each, in plain English, saying what was said and by whom.
+- start_id, hot_id, end_id: the ids of the message where it started, where it peaked and where it ended, exactly as shown in the transcript (plain "#530" for the main chat, "B#12" for a context chat). All three must come from the same chat, in time order. Use only ids that appear in the transcript.
+- start_translation, hot_translation, end_translation: English translation of those three messages; if one is already English, copy it exactly.
+- heat is 0 to 100 (how heated it got) and outcome says how it ended. If it just stopped without anyone settling it, use "fizzled_out".
+- If the chat is calm, return fewer incidents, or none. Never invent an incident.
+
+TRANSLATIONS
 - Every translation and every explanation is in English. Never leave a translation in Hindi, Hinglish, Bengali or any other language.
 - Translate meaning, not word by word, and keep slang and swearing at the same strength.
 - Emoji-only or sticker-only messages: describe them briefly, like "(laughing emojis)".
@@ -2661,6 +2806,7 @@ Return only the JSON object for the schema. Keep it tight so it fits on cards:
 - One suspect entry per person, up to 12 (the most active people across all the chats). Every pair worth mentioning, up to 10.
 - focus_report: a 1-2 sentence intro and 3 to 8 items, written in the investigator's voice. This is the main event of the report.
 - 2 or 3 receipts per suspect.
+- 2 to 6 incidents, most heated first (fewer, or none, if the chats are calm).
 - 3 to 6 unsaid findings, 4 to 8 awards, 3 to 6 exhibits, 2 to 6 timeline moments, 3 to 5 fix_it items, exactly 3 share_lines.`;
 }
 
@@ -2808,7 +2954,7 @@ function coerceCase(raw) {
   // Drop list entries that came back completely empty.
   const hasText = (o) => Object.values(o).some((v) => (typeof v === "string" ? v.trim() : Array.isArray(v) ? v.length : false));
   cf.suspects = cf.suspects.filter((s) => s.name.trim());
-  for (const k of ["pairs", "unsaid", "awards", "exhibits", "timeline", "fix_it"]) cf[k] = cf[k].filter(hasText);
+  for (const k of ["pairs", "unsaid", "awards", "exhibits", "timeline", "fix_it", "incidents"]) cf[k] = cf[k].filter(hasText);
   cf.focus_report.items = cf.focus_report.items.filter(hasText);
   cf.share_lines = cf.share_lines.filter((x) => x.trim());
   if (!cf.case_title.trim() && !cf.suspects.length && !cf.focus_report.items.length) throw { code: "invalid_json" };
@@ -3128,7 +3274,7 @@ function renderInterrogateCard(errorMsg = "") {
 
 function buildJump() {
   const ids = [...document.querySelectorAll("#ai-sections section, #stats-sections section")].map((s) => [s.id, s.querySelector("h2")?.textContent || s.id]);
-  const short = { focus: "Speciality", verdict: "Verdict", suspects: "Mugshots", ships: "Ships & beefs", unsaid: "Unsaid", awards: "Awards", fixit: "Fix-it", evidence: "Evidence", final: "Final", lineup: "Who talks most", interest: "Who likes who", badges: "Badges", web: "String board", activity: "Activity", speed: "Reply speed", words: "Words" };
+  const short = { focus: "Speciality", incidents: "Incidents", verdict: "Verdict", suspects: "Mugshots", ships: "Ships & beefs", unsaid: "Unsaid", awards: "Awards", fixit: "Fix-it", evidence: "Evidence", final: "Final", lineup: "Who talks most", interest: "Who likes who", badges: "Badges", web: "String board", activity: "Activity", speed: "Reply speed", words: "Words" };
   $("#jump").innerHTML = ids.map(([id, t]) => `<a href="#${id}">${esc(short[id] || t)}</a>`).join("");
 }
 
