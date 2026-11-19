@@ -125,3 +125,41 @@ test("an incident can cite a context chat by its prefixed ids", () => {
   const html = renderCase(cf, stats, { chats: { "": chat, B: other } });
   assert.match(html, /B#\d+ ·/);
 });
+
+
+test("villain verdict: a villain with the evidence and their defence, or an honest no-villain", () => {
+  const cf = coerceCase(SAMPLE_CASE);
+  const html = renderCase(cf, stats, { chat });
+  assert.match(html, /id="villain"/);
+  assert.match(html, /Chief Date-Mover/);
+  assert.match(html, /<b>Their side:<\/b>/, "the villain's defence is always shown");
+  assert.match(html, /Also to blame/);
+  assert.match(html, /then we(&#39;|')ll do 21-23/, "evidence ids resolve to the real messages");
+  assert.match(html, /for fun/);
+  const none = coerceCase({ case_title: "x", villain_verdict: { has_villain: false, name: "Aarav", the_case: "Shared blame." } });
+  const noneHtml = renderCase(none, stats, { chat });
+  assert.match(noneHtml, /No single villain/);
+  assert.doesNotMatch(noneHtml, /🦹/, "has_villain false never names a villain");
+  const noName = coerceCase({ case_title: "x", villain_verdict: { has_villain: true, name: "" } });
+  assert.match(renderCase(noName, stats, { chat }), /No single villain/, "a villain without a name is treated as none");
+  assert.ok(renderCase(coerceCase({ case_title: "x" }), stats, { chat }).length > 100, "missing verdict does not crash");
+});
+
+test("blame split: normalised to 100 and tolerant of bad input", () => {
+  const cf = coerceCase({ case_title: "x", incidents: [{ name: "A", blame: [{ person: "Meera", share: 30, why: "a" }, { person: "Aarav", share: "30%", why: "b" }, { person: "", share: 5 }, "junk"] }, { name: "B", blame: "nobody" }] });
+  const html = renderCase(cf, stats, { chat });
+  assert.match(html, /Who's to blame/);
+  assert.equal((html.match(/class="bl-pct">50%/g) || []).length, 2, "30 and 30 become 50 and 50");
+  assert.equal((html.match(/Who's to blame/g) || []).length, 1, "an incident with unusable blame shows none");
+});
+
+test("the prompt demands fairness about villains and about the uploader", async () => {
+  const { buildSystemPrompt, buildAskerBlock } = await import("../server/prompt.js");
+  const p = buildSystemPrompt({ persona: "sherlock", spice: "spicy" });
+  assert.match(p, /Be unbiased/);
+  assert.match(p, /Do not side with the person who uploaded/);
+  assert.match(p, /has_villain to false is a valid, honest answer/);
+  assert.match(p, /best honest defence/);
+  assert.match(p, /Never about looks, identity/);
+  assert.match(buildAskerBlock({ me: "Suspect A" }), /earns them no favours/);
+});

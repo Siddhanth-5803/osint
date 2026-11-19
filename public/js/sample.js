@@ -258,6 +258,12 @@ export const SAMPLE_CASE = {
       what_ended_it: "Kabir ended it with a polite 'very logical' and a passive-aggressive smiley. Nobody apologised.",
       end_id: "#45", end_translation: "very logical 🙂",
       people: ["Meera", "Aarav", "Zoya", "Kabir"], heat: 64, outcome: "fizzled_out",
+      blame: [
+        { person: "Aarav", share: 50, why: "Moved a whole trip for one person and left the sheet empty." },
+        { person: "Meera", share: 20, why: "Waited three days to say it, and said it with a smiley." },
+        { person: "Zoya", share: 15, why: "One message moved the plan, with no word on the dates she could do." },
+        { person: "Kabir", share: 15, why: "Agreed out loud, sulked in writing." },
+      ],
     },
     {
       name: "The April Postponement Meltdown", kind: "plan", chat: "Goa Trip 2026", date: "2026-02-10",
@@ -269,8 +275,21 @@ export const SAMPLE_CASE = {
       what_ended_it: "Meera gave up on March, moved everything to April and ordered a new sheet to be filled.",
       end_id: "#90", end_translation: "fine. april. NEW sheet. fill it.",
       people: ["Meera", "Zoya", "Aarav", "Rohan"], heat: 78, outcome: "unresolved",
+      blame: [
+        { person: "Zoya", share: 30, why: "Reopened the dates after everyone had agreed." },
+        { person: "Aarav", share: 30, why: "Said yes to April before asking anyone else." },
+        { person: "Rohan", share: 20, why: "Said yes to everything and booked nothing." },
+        { person: "Meera", share: 20, why: "Did the planning but never put money down either." },
+      ],
     },
   ],
+  villain_verdict: {
+    has_villain: true, name: "Aarav", title: "Chief Date-Mover",
+    the_case: "He moved the trip dates for one person within a minute, then took six hours to fill the sheet he was asked to fill, and kept answering 'yes' to the plan only when Zoya was in it.",
+    the_defence: "He was the only one who offered to actually book the flights, and he said yes to every date anyone suggested. He was inconsistent, not obstructive.",
+    also_to_blame: "Everyone who typed 'yes' and never booked, Zoya's late replies and Rohan's 'I'll book if someone sends me money'. Meera's smileys did not help either.",
+    evidence: ["#41", "#44", "#56", "#68"], confidence: "medium",
+  },
   focus_report: {
     title: "Sherlock's Fight Files",
     intro: "Four conflicts, one root cause: nobody says what they actually mean. I have reconstructed each one from the evidence.",

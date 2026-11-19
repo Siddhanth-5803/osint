@@ -86,6 +86,39 @@ function conversationHtml(inc, chats) {
   return `<details class="convo"><summary>📜 Read the whole conversation <small>(${rows.length} messages)</small></summary><div class="cv-box">${html}</div></details>`;
 }
 
+// Who is to blame in one incident: a bar per person with a short reason.
+function blameHtml(list) {
+  const rows = (Array.isArray(list) ? list : []).filter((b) => b && b.person);
+  if (!rows.length) return "";
+  const total = rows.reduce((n, b) => n + clamp(b.share), 0) || 1;
+  const items = rows.map((b) => {
+    const pctShare = Math.round((clamp(b.share) / total) * 100);
+    return `<div class="bl-row"><span class="bl-name">${esc(b.person)}</span><div class="bar"><i style="width:${pctShare}%"></i></div><span class="bl-pct">${pctShare}%</span>${b.why ? `<p class="bl-why">${esc(b.why)}</p>` : ""}</div>`;
+  }).join("");
+  return `<div class="blame"><span class="label">⚖️ Who's to blame</span>${items}</div>`;
+}
+
+// The overall verdict: is there a villain, and the fair case for and against them.
+function villainHtml(v, chats) {
+  if (!v || typeof v !== "object") return "";
+  const has = v.has_villain === true && String(v.name || "").trim();
+  const proof = [].concat(v.evidence || []).map((id) => findMsg(chats, id)).filter(Boolean).slice(0, 5).map((h) =>
+    `<div class="i-quote"><span class="r-meta">${esc(h.prefix)}#${h.m.i} · ${esc(when(h.m.ts))} · ${esc(h.m.author)}</span><p class="r-text">${esc(msgBody(h.m))}</p></div>`).join("");
+  const conf = v.confidence ? `<span class="conf ${esc(v.confidence)}">${esc(v.confidence)} confidence</span>` : "";
+  if (!has) {
+    return section("villain", "The verdict", "Who ruined it?", "", `<div class="card villain none"><span class="v-emoji">🤝</span><h3>No single villain</h3>
+  <p>${esc(v.the_case || "The blame is shared. Nobody did enough on their own to be the villain.")}</p>
+  ${v.also_to_blame ? `<p class="v-also"><b>Who contributed:</b> ${esc(v.also_to_blame)}</p>` : ""}${conf}${proof ? `<div class="v-proof">${proof}</div>` : ""}</div>`);
+  }
+  return section("villain", "The verdict", "Who ruined it?", "Judged on what people did in the messages. The villain's side is shown too.", `<div class="card villain"><span class="v-emoji">🦹</span>
+  <h3>${esc(v.name)}${v.title ? ` <small class="v-title">${esc(v.title)}</small>` : ""}</h3>
+  <p class="v-case"><b>The case:</b> ${esc(v.the_case)}</p>
+  <p class="v-defence"><b>Their side:</b> ${esc(v.the_defence)}</p>
+  ${v.also_to_blame ? `<p class="v-also"><b>Also to blame:</b> ${esc(v.also_to_blame)}</p>` : ""}
+  ${conf}${proof ? `<div class="v-proof"><span class="label">The evidence</span>${proof}</div>` : ""}
+  <p class="v-fun">The villain label is for fun, and it is about what happened in these messages, not about who anyone is.</p></div>`);
+}
+
 function incidentsHtml(list, chats) {
   if (!Array.isArray(list) || !list.length) return "";
   const cards = list.map((inc, i) => {
@@ -106,6 +139,7 @@ function incidentsHtml(list, chats) {
     ${beatHtml("🔥", "The hottest moment", inc.hottest_moment, inc.hot_id, inc.hot_translation, chats)}
     ${beatHtml("🏁", "What ended it", inc.what_ended_it, inc.end_id, inc.end_translation, chats)}
   </div>
+  ${blameHtml(inc.blame)}
   ${conversationHtml(inc, chats)}
 </article>`;
   }).join("");
@@ -237,6 +271,7 @@ export function renderCase(cf, stats, opts = {}) {
   }));
 
   parts.push(safe("incidents", () => incidentsHtml(cf.incidents, chats)));
+  parts.push(safe("villain", () => villainHtml(cf.villain_verdict, chats)));
 
   parts.push(safe("mugshots", () => {
   const mugs = (cf.suspects || []).map((s, i) => safe(`mugshot ${i + 1}`, () => {
